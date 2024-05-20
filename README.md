@@ -13,7 +13,7 @@ http://fsecurify.com/xsspy-web-application-xss-scanner/
 # Installation: 
 Type the following in the terminal.
 
-`git clone https://github.com/faizann24/XssPy/` /opt/xsspy
+`https://github.com/ailzaza/XssPy-master/` /opt/xsspy-master
 
 The tool works on Python 2.7 and you should have mechanize installed. If mechanize is not installed, type "pip install mechanize" in the terminal.
 
