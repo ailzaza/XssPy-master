@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 import mechanize
 import sys
-import http.client
+import http.client as httplib  # updated import for Python 3
 import argparse
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlparse  # updated import for Python 3
 
 br = mechanize.Browser()  # initiating the browser
 br.addheaders = [
@@ -17,7 +17,7 @@ br.set_handle_refresh(False)
 payloads = ['<svg "ons>', '" onfocus="alert(1);', 'javascript:alert(1)']
 blacklist = ['.png', '.jpg', '.jpeg', '.mp3', '.mp4', '.avi', '.gif', '.svg',
              '.pdf']
-xssLinks = []            # TOTAL CROSS SITE SCRIPTING FINDINGS
+xssLinks = []  # TOTAL CROSS SITE SCRIPTING FINDINGS
 
 
 class color:
@@ -31,6 +31,27 @@ class color:
     @staticmethod
     def log(lvl, col, msg):
         logger.log(lvl, col + msg + color.END)
+
+
+print(color.BOLD + color.RED + """
+XssPy - Finding XSS made easier
+Author: Faizan Ahmad (Fsecurify)
+Email: fsecurify@gmail.com
+Usage: XssPy.py website.com (Not www.website.com OR http://www.website.com)
+Comprehensive Scan: python XssPy.py -u website.com -e
+Verbose logging: python XssPy.py -u website.com -v
+Cookies: python XssPy.py -u website.complex -c name=val name=val
+
+Description: XssPy is a python tool for finding Cross Site Scripting
+vulnerabilities in websites. This tool is the first of its kind.
+Instead of just checking one page as most of the tools do, this tool
+traverses the website and find all the links and subdomains first.
+After that, it starts scanning each and every input on each and every
+page that it found while its traversal. It uses small yet effective
+payloads to search for XSS vulnerabilities. XSS in many high
+profile websites and educational institutes has been found
+by using this very tool.
+""" + color.END)
 
 logger = logging.getLogger(__name__)
 lh = logging.StreamHandler()  # Handler for the logger
@@ -68,14 +89,14 @@ def testPayload(payload, p, link):
 
 def initializeAndFind():
 
-    if not results.url:    # if the url has been passed or not
+    if not results.url:  # if the url has been passed or not
         color.log(logging.INFO, color.GREEN, 'Url not provided correctly')
         return []
 
-    firstDomains = []    # list of domains
+    firstDomains = []  # list of domains
     allURLS = []
-    allURLS.append(results.url)    # just one url at the moment
-    largeNumberOfUrls = []    # in case one wants to do comprehensive search
+    allURLS.append(results.url)  # just one url at the moment
+    largeNumberOfUrls = []  # in case one wants to do comprehensive search
 
     # doing a short traversal if no command line argument is being passed
     color.log(logging.INFO, color.GREEN, 'Doing a short traversal.')
@@ -84,19 +105,18 @@ def initializeAndFind():
         # Test HTTPS/HTTP compatibility. Prefers HTTPS but defaults to
         # HTTP if any errors are encountered
         try:
-            parsed_url = urlparse(smallurl)
-            conn = http.client.HTTPSConnection(parsed_url.netloc)
-            conn.request("GET", "/")
-            response = conn.getresponse()
-            if (response.status == 200) or (response.status == 302):
-                url = "https://" + str(url)
+            test = httplib.HTTPSConnection(smallurl)
+            test.request("GET", "/")
+            response = test.getresponse()
+            if (response.status == 200) | (response.status == 302):
+                url = "https://www." + str(url)
             elif response.status == 301:
                 loc = response.getheader('Location')
-                url = urlparse(loc).scheme + '://' + urlparse(loc).netloc
+                url = loc.scheme + '://' + loc.netloc
             else:
-                url = "http://" + str(url)
+                url = "http://www." + str(url)
         except:
-            url = "http://" + str(url)
+            url = "http://www." + str(url)
         try:
             br.open(url)
             for cookie in results.cookies:
@@ -106,7 +126,7 @@ def initializeAndFind():
             br.open(url)
             color.log(logging.INFO, color.GREEN,
                       'Finding all the links of the website ' + str(url))
-            for link in br.links():        # finding the links of the website
+            for link in br.links():  # finding the links of the website
                 if smallurl in str(link.absolute_url):
                     firstDomains.append(str(link.absolute_url))
             firstDomains = list(set(firstDomains))
@@ -136,7 +156,7 @@ def initializeAndFind():
 def findxss(firstDomains):
     # starting finding XSS
     color.log(logging.INFO, color.GREEN, 'Started finding XSS')
-    if firstDomains:    # if there is at least one link
+    if firstDomains:  # if there is at least one link
         for link in firstDomains:
             blacklisted = False
             y = str(link)
@@ -149,10 +169,10 @@ def findxss(firstDomains):
                     break
             if not blacklisted:
                 try:
-                    br.open(str(link))    # open the link
-                    if br.forms():        # if a form exists, submit it
-                        params = list(br.forms())[0]    # our form
-                        br.select_form(nr=0)    # submit the first form
+                    br.open(str(link))  # open the link
+                    if br.forms():  # if a form exists, submit it
+                        params = list(br.forms())[0]  # our form
+                        br.select_form(nr=0)  # submit the first form
                         for p in params.controls:
                             par = str(p)
                             # submit only those forms which require text
@@ -165,7 +185,7 @@ def findxss(firstDomains):
                     pass
         color.log(logging.DEBUG, color.GREEN + color.BOLD,
                   'The following links are vulnerable: ')
-        for link in xssLinks:        # print all xss findings
+        for link in xssLinks:  # print all xss findings
             color.log(logging.DEBUG, color.GREEN, '\t' + link)
     else:
         color.log(logging.INFO, color.RED + color.BOLD,
