@@ -1,10 +1,13 @@
+Berikut adalah kode yang telah diubah menjadi kompatibel dengan Python 3:
+
+```python
 #!/usr/bin/env python
 import mechanize
 import sys
-import http.client as httplib  # updated import for Python 3
+import http.client as httplib
 import argparse
 import logging
-from urllib.parse import urlparse  # updated import for Python 3
+from urllib.parse import urlparse
 
 br = mechanize.Browser()  # initiating the browser
 br.addheaders = [
@@ -15,8 +18,7 @@ br.set_handle_robots(False)
 br.set_handle_refresh(False)
 
 payloads = ['<svg "ons>', '" onfocus="alert(1);', 'javascript:alert(1)']
-blacklist = ['.png', '.jpg', '.jpeg', '.mp3', '.mp4', '.avi', '.gif', '.svg',
-             '.pdf']
+blacklist = ['.png', '.jpg', '.jpeg', '.mp3', '.mp4', '.avi', '.gif', '.svg', '.pdf']
 xssLinks = []  # TOTAL CROSS SITE SCRIPTING FINDINGS
 
 
@@ -47,7 +49,7 @@ vulnerabilities in websites. This tool is the first of its kind.
 Instead of just checking one page as most of the tools do, this tool
 traverses the website and find all the links and subdomains first.
 After that, it starts scanning each and every input on each and every
-page that it found while its traversal. It uses small yet effective
+ page that it found while its traversal. It uses small yet effective
 payloads to search for XSS vulnerabilities. XSS in many high
 profile websites and educational institutes has been found
 by using this very tool.
@@ -60,15 +62,10 @@ formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
 lh.setFormatter(formatter)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-u', action='store', dest='url',
-                    help='The URL to analyze')
-parser.add_argument('-e', action='store_true', dest='compOn',
-                    help='Enable comprehensive scan')
-parser.add_argument('-v', action='store_true', dest='verbose',
-                    help='Enable verbose logging')
-parser.add_argument('-c', action='store', dest='cookies',
-                    help='Space separated list of cookies',
-                    nargs='+', default=[])
+parser.add_argument('-u', action='store', dest='url', help='The URL to analyze')
+parser.add_argument('-e', action='store_true', dest='compOn', help='Enable comprehensive scan')
+parser.add_argument('-v', action='store_true', dest='verbose', help='Enable verbose logging')
+parser.add_argument('-c', action='store', dest='cookies', help='Space separated list of cookies', nargs='+', default=[])
 results = parser.parse_args()
 
 logger.setLevel(logging.DEBUG if results.verbose else logging.INFO)
@@ -80,15 +77,13 @@ def testPayload(payload, p, link):
     # if payload is found in response, we have XSS
     if payload in br.response().read():
         color.log(logging.DEBUG, color.BOLD + color.GREEN, 'XSS found!')
-        report = 'Link: %s, Payload: %s, Element: %s' % (str(link),
-                                                         payload, str(p.name))
+        report = 'Link: %s, Payload: %s, Element: %s' % (str(link), payload, str(p.name))
         color.log(logging.INFO, color.BOLD + color.GREEN, report)
         xssLinks.append(report)
     br.back()
 
 
 def initializeAndFind():
-
     if not results.url:  # if the url has been passed or not
         color.log(logging.INFO, color.GREEN, 'Url not provided correctly')
         return []
@@ -120,23 +115,19 @@ def initializeAndFind():
         try:
             br.open(url)
             for cookie in results.cookies:
-                color.log(logging.INFO, color.BLUE,
-                          'Adding cookie: %s' % cookie)
+                color.log(logging.INFO, color.BLUE, 'Adding cookie: %s' % cookie)
                 br.set_cookie(cookie)
             br.open(url)
-            color.log(logging.INFO, color.GREEN,
-                      'Finding all the links of the website ' + str(url))
+            color.log(logging.INFO, color.GREEN, 'Finding all the links of the website ' + str(url))
             for link in br.links():  # finding the links of the website
                 if smallurl in str(link.absolute_url):
                     firstDomains.append(str(link.absolute_url))
             firstDomains = list(set(firstDomains))
         except:
             pass
-        color.log(logging.INFO, color.GREEN,
-                  'Number of links to test are: ' + str(len(firstDomains)))
+        color.log(logging.INFO, color.GREEN, 'Number of links to test are: ' + str(len(firstDomains)))
         if results.compOn:
-            color.log(logging.INFO, color.GREEN,
-                      'Doing a comprehensive traversal. This may take a while')
+            color.log(logging.INFO, color.GREEN, 'Doing a comprehensive traversal. This may take a while')
             for link in firstDomains:
                 try:
                     br.open(link)
@@ -147,9 +138,7 @@ def initializeAndFind():
                 except:
                     pass
             firstDomains = list(set(firstDomains + largeNumberOfUrls))
-            color.log(logging.INFO, color.GREEN,
-                      'Total Number of links to test have become: ' +
-                      str(len(firstDomains)))  # all links have been found
+            color.log(logging.INFO, color.GREEN, 'Total Number of links to test have become: ' + str(len(firstDomains)))
     return firstDomains
 
 
@@ -163,8 +152,7 @@ def findxss(firstDomains):
             color.log(logging.DEBUG, color.YELLOW, str(link))
             for ext in blacklist:
                 if ext in y:
-                    color.log(logging.DEBUG, color.RED,
-                              '\tNot a good url to test')
+                    color.log(logging.DEBUG, color.RED, '\tNot a good url to test')
                     blacklisted = True
                     break
             if not blacklisted:
@@ -177,21 +165,19 @@ def findxss(firstDomains):
                             par = str(p)
                             # submit only those forms which require text
                             if 'TextControl' in par:
-                                color.log(logging.DEBUG, color.YELLOW,
-                                          '\tParam: ' + str(p.name))
+                                color.log(logging.DEBUG, color.YELLOW, '\tParam: ' + str(p.name))
                                 for item in payloads:
                                     testPayload(item, p, link)
                 except:
                     pass
-        color.log(logging.DEBUG, color.GREEN + color.BOLD,
-                  'The following links are vulnerable: ')
+        color.log(logging.DEBUG, color.GREEN + color.BOLD, 'The following links are vulnerable: ')
         for link in xssLinks:  # print all xss findings
             color.log(logging.DEBUG, color.GREEN, '\t' + link)
     else:
-        color.log(logging.INFO, color.RED + color.BOLD,
-                  '\tNo link found, exiting')
+        color.log(logging.INFO, color.RED + color.BOLD, '\tNo link found, exiting')
 
 
 # calling the function
 firstDomains = initializeAndFind()
 findxss(firstDomains)
+```
