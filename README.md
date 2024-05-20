@@ -1,15 +1,3 @@
-# XssPy - Web Application XSS Scanner
-A tool by Fsecurify
-
-Author: Faizan Ahmad 
-https://pk.linkedin.com/in/faizan-ahmad-015964118
-
-# Great News: Xsspy was recently used by an engineer at microsoft to find a bug in Pentagon's Bug Bounty Program.
-http://holisticinfosec.blogspot.com/2016/06/toolsmith-tidbit-xsspy.html
-
-# How to Use: 
-http://fsecurify.com/xsspy-web-application-xss-scanner/
-
 # Installation: 
 Type the following in the terminal.
 
