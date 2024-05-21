@@ -1,191 +1,102 @@
-kodingan untuk Engine.py
-#!/usr/bin/env python3
+#!/usr/bin/python2.7
 # -*- encoding: utf-8 -*-
 """
-    @Description: Core of NoXss, include preprocess, detect, scan, etc.
-
-    ~~~~~~
-    @Author  : longwenzhang
-    @Time    : 19-10-9  10:13
-"""
-import pickle
-import os
-import time
-import urllib.request
-import urllib.parse
-import urllib.error
-from queue import Empty
-from http.client import BadStatusLine
-from multiprocessing import Process, Manager
-import json
-import re
-from log import LOGGER
-from ssl import CertificateError
-from xml.etree import ElementTree as cElementTree
-from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
-from config import TRAFFIC_DIR, REQUEST_ERROR, REDIRECT, MULTIPART
-from cookie import get_cookie
-from model import Case, HttpRequest, HttpResponse
-from util import functimeout, Func_timeout_error, change_by_param, list2dict, chrome, phantomjs, \
-    getResponseHeaders, check_type, add_cookie, \
-    get_domain_from_url, divide_list, make_request, gen_poc, get_api
-import gevent
-from gevent import pool
-from socket import error as SocketError
-
-try:
-    from bs4 import BeautifulSoup
-except ImportError as e:
-    LOGGER.warning(e)
-
-manager = Manager()
-case_list = manager.list()
-opener_result = manager.list()
-traffic_queue = manager.Queue()
-traffic_list = manager.list()
-reflect_list = manager.list()
-api_list = manager.list()
-
-class TrafficGenerator(Process):
-    DEFAULT_HEADER = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
-    }
-
-    def __init__(self, id, url_list, coroutine):
-        super().__init__()
-        self.id = id
-        self.url_list = url_list
-        self.coroutine = coroutine
-
-    def gen_traffic(self, url):
-        domain = get_domain_from_url(url)
-        cookie = get_cookie(domain)
-        self.DEFAULT_HEADER['Cookie'] = cookie
-        self.DEFAULT_HEADER['Referer'] = 'https://' + domain + '/'
-        request = HttpRequest(method='GET', url=url, headers=self.DEFAULT_HEADER, body='')
-        req = urllib.request.Request(url=url, headers=self.DEFAULT_HEADER)
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = resp.read()
-                resp_headers = resp.headers
-                resp_headers_dict = {k: v for k, v in resp_headers.items()}
-                response = HttpResponse(code=resp.getcode(), reason=resp.reason, headers=resp_headers_dict, data=data)
-                return request, response
-        except urllib.error.URLError as e:
-            REQUEST_ERROR.append(('gen_traffic()', url, str(e.reason)))
-        except CertificateError:
-            REQUEST_ERROR.append(('gen_traffic()', url, 'ssl.CertificateError'))
-        except (ValueError, BadStatusLine, SocketError) as e:
-            LOGGER.warning(str(e))
-
-    def run(self):
-        gevent.monkey.patch_all()
-        g_pool = pool.Pool(self.coroutine)
-        tasks = [g_pool.spawn(self.gen_traffic, url) for url in self.url_list]
-        gevent.joinall(tasks)
-        for i in tasks:
-            if i.value:
-                traffic_list.append(i.value)
-        Engine.save_traffic(traffic_list, self.id)
-
-# Define other classes and functions as necessary...
-
-if __name__ == '__main__':
-    pass
-
-
-kodingan untuk start.py
-#!/usr/bin/env python3
-# -*- encoding: utf-8 -*-
-"""
-    @Description: Cli for XSS scanning.
-
+    @Description: Cli
+    
     ~~~~~~ 
     @Author  : longwenzhang
     @Time    : 19-10-9  10:13
 """
+from log import LOGGER
 import argparse
 from multiprocessing import cpu_count
-from engine import Engine
-from util import save, gen_id, get_domain_from_url, clear
-from banner import banner  # Assuming this module prints some startup banner
+from banner import banner
+from engine import engine
+from util import save, gen_id, get_domain_from_url
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="start.py", description='Scan XSS from URL or file.', usage='start.py --url=url --save')
-    parser.add_argument('-v', '--version', action='version', version='V1.0-beta')
-    parser.add_argument('--check', action='store_true', help='Check if the browser is installed correctly.')
-    parser.add_argument('--url', '-u', help='The target site to scan.')
-    parser.add_argument('--id', action='store', help='Rescan by task ID.')
-    parser.add_argument('-f', '--file', help='Scan URLs from a text file.')
-    parser.add_argument('--burp', help='Scan from a *.xml file from BurpSuite proxy.')
-    parser.add_argument('--process', type=int, help='Number of processes to use.')
-    parser.add_argument('-c', '--coroutine', type=int, help='Number of coroutines to use.')
-    parser.add_argument('--cookie', action='store', help='Cookie to use in requests.')
-    parser.add_argument('--filter', action='store_true', help='Filter URLs when using --file.')
-    parser.add_argument('--clear', action='store_true', help='Delete traffic files after scan.')
-    parser.add_argument('--browser', action='store', help='Scan with browser, is good at DOM-based XSS but slow.')
-    parser.add_argument('--save', action='store_true', help='Save result to JSON file.')
-    
+if __name__=="__main__":
+    parser = argparse.ArgumentParser(prog="start.py",description='scan xss from url or file.',usage='start.py --url=url --save')
+    parser.add_argument('-v','--version', action='version', version='V1.0-beta')
+    parser.add_argument('--check', action='store_true', help='check if browser is installed correctly.')
+    parser.add_argument('--url','-u',help='the target site of scan.')
+    parser.add_argument('--id',action='store',help='rescan by task id.')
+    parser.add_argument('-f','--file',help='scan urls from text file.')
+    parser.add_argument('--burp', help='scan from *.xml from burpsuite proxy.')
+    parser.add_argument('--process',type=int,help='process number.')
+    parser.add_argument('-c','--coroutine',type=int,help='coroutine number.')
+    parser.add_argument('--cookie',action='store',help='use cookie.')
+    parser.add_argument('--filter', action='store_true', help='filter urls when use --file.')
+    parser.add_argument('--clear',action='store_true',help='delete traffic files after scan.')
+    parser.add_argument('--browser',action='store',help='scan with browser,is good at Dom-based xss but slow.')
+    parser.add_argument('--save',action='store_true',help='save result to json file.')
     banner()
-    args = parser.parse_args()
-
+    args=parser.parse_args()
     if args.check:
         from check import check_install
         check_install()
-
-    url, file, burp = '', '', ''
-    filter = False
-    num = cpu_count()
-    coroutine = 200
-
+    # default
+    url,file,burp='','',''
+    filter=False
+    # default use number of cpu-core as processes
+    num=cpu_count()
+    # default
+    coroutine=200
     if args.url:
         from check import check_url
-        url = args.url
-        num = 1  # Assuming running with one process if a specific URL is provided
+        url=args.url
+        num=1
         check_url(url)
     if args.file:
-        file = args.file
+        file=args.file
     if args.burp:
-        burp = args.burp
+        burp=args.burp
     if args.filter:
-        filter = args.filter
-    browser = ''
+        filter=args.filter
+    browser=''
     if args.browser:
-        browser = args.browser
-        num = 2 if not args.url else 1  # Use two processes if a browser is needed unless a specific URL is provided
-
+        browser=args.browser
+        # default 2 if use browser
+        num=2
+        if args.url:
+            num=1
     if args.process:
-        num = args.process
+        num=args.process
     if args.coroutine:
-        coroutine = args.coroutine
+        coroutine=args.coroutine
     if args.cookie:
-        from cookie import save_cookie, save_cookie_ip, is_ip
-        scope_url = url if url else open(file).readline().strip()
-        domain = get_domain_from_url(scope_url)
+        from cookie import save_cookie_ip, is_ip
+        if file:
+            with open(file)as f:
+                scope_url=f.readline().strip()
+        elif url:
+            scope_url=url
+        domain=get_domain_from_url(scope_url)
         if is_ip(scope_url):
             save_cookie_ip(args.cookie, domain)
         else:
+            from cookie import save_cookie
             save_cookie(args.cookie, domain)
-
     if url or file or burp or args.id or args.filter:
         if args.id:
-            id = args.id
-            if not Engine.is_scanned(id):
-                LOGGER.error(f'Task {id} not found, exiting.')
-                exit(1)
+            id=args.id
+            if not engine.is_scanned(id):
+                LOGGER.error('Task %s not found,exit.'%id)
+                exit(0)
         else:
-            id = gen_id()
-
-        engine = Engine(id=id, url=url, file=file, burp=burp, process=num, coroutine=coroutine, browser=browser, filter=filter)
+            id=gen_id()
+        engine=engine(id=id,url=url,file=file,burp=burp,process=num,browser=browser,coroutine=coroutine,filter=filter)
         try:
-            result = engine.start()
+            result=engine.start()
+        except KeyboardInterrupt,e:
+            LOGGER.info(e)
+        else:
             if result:
                 save(result, id)
             else:
-                LOGGER.info('No XSS found!')
+                LOGGER.info('No xss found!')
             if args.clear:
+                from util import clear
+
                 clear(id)
-        except KeyboardInterrupt:
-            LOGGER.info('Interrupted by user')
     else:
-        LOGGER.error('Error: missing a mandatory option (--url, --file, --burp, --id)!')
+        LOGGER.error('error: missing a mandatory option (--url, --file, --burp, --id)!')
