@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
+import pickle
+import os
+import time
+import urllib.request
+import urllib.parse
+import urllib.error
+from queue import Empty
+from http.client import BadStatusLine
+from multiprocessing import Process, Manager
+import json
+import re
+from log import LOGGER
+from ssl import CertificateError
+from xml.etree import ElementTree as cElementTree
+from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
+from config import TRAFFIC_DIR, REQUEST_ERROR, REDIRECT, MULTIPART
+from cookie import get_cookie
+from model import Case, HttpRequest, HttpResponse
+from util import functimeout, Func_timeout_error, change_by_param, list2dict, chrome, phantomjs, getResponseHeaders, check_type, add_cookie, get_domain_from_url, divide_list, make_request, gen_poc, get_api
+import gevent
+from gevent import pool
+from socket import error as SocketError
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError as e:
+    LOGGER.warn(str(e))
+
+manager = Manager()
+case_list = manager.list()
+openner_result = manager.list()
+traffic_queue = manager.Queue()
+traffic_list = manager.list()
+reflect_list = manager.list()
+api_list = manager.list()
+
+class Traffic_generator(Process):
+    DEFAULT_HEADER = {
+        'User-Agent': 'Mozilla/2.0 (X11; Linux x86_64) AppleWebKit/237.36 (KHTML, like Gecko) Chrome/62.0.3322.146 Safari/237.36',
+    }
+
+    def __init__(self, id, url_list, coroutine):
+        super().__init__()
+        self.id = id
+        self.url_list = url_list
+        self.coroutine = coroutine
+
+    def gen_traffic(self, url):
+        domain = get_domain_from_url(url)
+        cookie = get_cookie(domain)
+        self.DEFAULT_HEADER['Cookie'] = cookie
+        self.DEFAULT_HEADER['Referer'] = 'https://' + domain + '/'
+        request = HttpRequest(method='GET', url=url, headers=self.DEFAULT_HEADER, body='')
+        req = urllib.request.Request(url=url, headers=self.DEFAULT_HEADER)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+                resp_headers = resp.headers
+                resp_headers_dict = dict(resp_headers)
+                response = HttpResponse(code=resp.getcode(), reason=resp.reason, headers=resp_headers_dict, data=data)
+                return (request, response)
+        except urllib.error.URLError as e:
+            REQUEST_ERROR.append(('gen_traffic()', url, str(e.reason)))
+        except CertificateError:
+            REQUEST_ERROR.append(('gen_traffic()', url, 'ssl.CertificateError'))
+        except (ValueError, BadStatusLine, SocketError) as e:
+            LOGGER.warn(str(e))
+
+    def run(self):
+        gevent.monkey.patch_all()
+        g_pool = pool.Pool(self.coroutine)
+        tasks = [g_pool.spawn(self.gen_traffic, url) for url in self.url_list]
+        gevent.joinall(tasks)
+        traffic_list = []
+        for i in tasks:
+            if i.value:
+                traffic_list.append(i.value)
+        Engine.save_traffic(traffic_list, self.id)
+
+# Further implementation as required by your application
