@@ -1,82 +1,94 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # -*- encoding: utf-8 -*-
-import pickle
-import os
-import time
-import urllib.request
-import urllib.parse
-import urllib.error
-from queue import Empty
-from http.client import BadStatusLine
-from multiprocessing import Process, Manager
-import json
-import re
 from log import LOGGER
-from ssl import CertificateError
-from xml.etree import ElementTree as cElementTree
-from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
-from config import TRAFFIC_DIR, REQUEST_ERROR, REDIRECT, MULTIPART
-from cookie import get_cookie
-from model import Case, HttpRequest, HttpResponse
-from util import functimeout, Func_timeout_error, change_by_param, list2dict, chrome, phantomjs, getResponseHeaders, check_type, add_cookie, get_domain_from_url, divide_list, make_request, gen_poc, get_api
-import gevent
-from gevent import pool
-from socket import error as SocketError
+import argparse
+from multiprocessing import cpu_count
+from banner import banner
+from engine import engine
+from util import save, gen_id, get_domain_from_url
 
-try:
-    from bs4 import BeautifulSoup
-except ImportError as e:
-    LOGGER.warn(str(e))
-
-manager = Manager()
-case_list = manager.list()
-openner_result = manager.list()
-traffic_queue = manager.Queue()
-traffic_list = manager.list()
-reflect_list = manager.list()
-api_list = manager.list()
-
-class Traffic_generator(Process):
-    DEFAULT_HEADER = {
-        'User-Agent': 'Mozilla/2.0 (X11; Linux x86_64) AppleWebKit/237.36 (KHTML, like Gecko) Chrome/62.0.3322.146 Safari/237.36',
-    }
-
-    def __init__(self, id, url_list, coroutine):
-        super().__init__()
-        self.id = id
-        self.url_list = url_list
-        self.coroutine = coroutine
-
-    def gen_traffic(self, url):
-        domain = get_domain_from_url(url)
-        cookie = get_cookie(domain)
-        self.DEFAULT_HEADER['Cookie'] = cookie
-        self.DEFAULT_HEADER['Referer'] = 'https://' + domain + '/'
-        request = HttpRequest(method='GET', url=url, headers=self.DEFAULT_HEADER, body='')
-        req = urllib.request.Request(url=url, headers=self.DEFAULT_HEADER)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog="start.py", description='scan xss from url or file.', usage='start.py --url=url --save')
+    parser.add_argument('-v', '--version', action='version', version='V1.0-beta')
+    parser.add_argument('--check', action='store_true', help='check if browser is installed correctly.')
+    parser.add_argument('--url', '-u', help='the target site of scan.')
+    parser.add_argument('--id', action='store', help='rescan by task id.')
+    parser.add_argument('-f', '--file', help='scan urls from text file.')
+    parser.add_argument('--burp', help='scan from *.xml from burpsuite proxy.')
+    parser.add_argument('--process', type=int, help='process number.')
+    parser.add_argument('-c', '--coroutine', type=int, help='coroutine number.')
+    parser.add_argument('--cookie', action='store', help='use cookie.')
+    parser.add_argument('--filter', action='store_true', help='filter urls when use --file.')
+    parser.add_argument('--clear', action='store_true', help='delete traffic files after scan.')
+    parser.add_argument('--browser', action='store', help='scan with browser, is good at Dom-based xss but slow.')
+    parser.add_argument('--save', action='store_true', help='save result to json file.')
+    banner()
+    args = parser.parse_args()
+    if args.check:
+        from check import check_install
+        check_install()
+    # default
+    url, file, burp = '', '', ''
+    filter = False
+    # default use number of cpu-core as processes
+    num = cpu_count()
+    # default
+    coroutine = 200
+    if args.url:
+        from check import check_url
+        url = args.url
+        num = 1
+        check_url(url)
+    if args.file:
+        file = args.file
+    if args.burp:
+        burp = args.burp
+    if args.filter:
+        filter = args.filter
+    browser = ''
+    if args.browser:
+        browser = args.browser
+        # default 2 if use browser
+        num = 2
+        if args.url:
+            num = 1
+    if args.process:
+        num = args.process
+    if args.coroutine:
+        coroutine = args.coroutine
+    if args.cookie:
+        from cookie import save_cookie_ip, is_ip
+        if file:
+            with open(file) as f:
+                scope_url = f.readline().strip()
+        elif url:
+            scope_url = url
+        domain = get_domain_from_url(scope_url)
+        if is_ip(scope_url):
+            save_cookie_ip(args.cookie, domain)
+        else:
+            from cookie import save_cookie
+            save_cookie(args.cookie, domain)
+    if url or file or burp or args.id or args.filter:
+        if args.id:
+            id = args.id
+            if not Engine.is_scanned(id):
+                LOGGER.error('Task %s not found, exit.' % id)
+                exit(0)
+        else:
+            id = gen_id()
+        engine = Engine(id=id, url=url, file=file, burp=burp, process=num, browser=browser, coroutine=coroutine, filter=filter)
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = resp.read()
-                resp_headers = resp.headers
-                resp_headers_dict = dict(resp_headers)
-                response = HttpResponse(code=resp.getcode(), reason=resp.reason, headers=resp_headers_dict, data=data)
-                return (request, response)
-        except urllib.error.URLError as e:
-            REQUEST_ERROR.append(('gen_traffic()', url, str(e.reason)))
-        except CertificateError:
-            REQUEST_ERROR.append(('gen_traffic()', url, 'ssl.CertificateError'))
-        except (ValueError, BadStatusLine, SocketError) as e:
-            LOGGER.warn(str(e))
-
-    def run(self):
-        gevent.monkey.patch_all()
-        g_pool = pool.Pool(self.coroutine)
-        tasks = [g_pool.spawn(self.gen_traffic, url) for url in self.url_list]
-        gevent.joinall(tasks)
-        traffic_list = []
-        for i in tasks:
-            if i.value:
-                traffic_list.append(i.value)
-        Engine.save_traffic(traffic_list, self.id)
-
-# Further implementation as required by your application
+            result = engine.start()
+        except KeyboardInterrupt as e:
+            LOGGER.info(e)
+        else:
+            if result:
+                save(result, id)
+            else:
+                LOGGER.info('No xss found!')
+            if args.clear:
+                from util import clear
+                clear(id)
+    else:
+        LOGGER.error('error: missing a mandatory option (--url, --file, --burp, --id)!')
