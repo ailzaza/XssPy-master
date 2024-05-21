@@ -1,20 +1,26 @@
-!/usr/bin/python2.7
+#!/usr/bin/python2.7
 # -*- encoding: utf-8 -*-
 """
-    @Description: print logo.
+    @Description: Print logo.
     
     ~~~~~~ 
     @Author  : longwenzhang
     @Time    : 19-10-9  10:28
 """
+
 import os
 from config import BASE_DIR
 
 def banner():
-    with open(os.path.join(BASE_DIR,'logo'))as banner_f:
-        a=banner_f.read()
-    BANNER = """\033[01;33m"""+a+"""\033[0m"""
+    # Open the logo file and read its content
+    with open(os.path.join(BASE_DIR, 'logo')) as banner_f:
+        logo_content = banner_f.read()
+    
+    # Define the banner with escape sequences for color formatting
+    BANNER = """\033[01;33m""" + logo_content + """\033[0m"""
+    
+    # Print the banner
     print BANNER
 
-if __name__=='__main__':
+if __name__ == '__main__':
     banner()
