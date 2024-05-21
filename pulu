@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 # -*- encoding: utf-8 -*-
 from log import LOGGER
 import argparse
@@ -89,7 +89,6 @@ if __name__ == "__main__":
                 LOGGER.info('No xss found!')
             if args.clear:
                 from util import clear
-
                 clear(id)
     else:
         LOGGER.error('error: missing a mandatory option (--url, --file, --burp, --id)!')
