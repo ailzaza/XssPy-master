@@ -1,137 +1,102 @@
-#!/usr/bin/env python3
+#!/usr/bin/python2.7
 # -*- encoding: utf-8 -*-
 """
-    @Description: Common Utils.
+    @Description: Cli
     
     ~~~~~~ 
     @Author  : longwenzhang
-    @Time    : 19-10-9   12:16
+    @Time    : 19-10-9  10:13
 """
-import datetime
-import json
-import os
-import re
-import signal
-import urllib.request
-import urllib.parse
-import urllib.error
-import urllib.parse
-from http.client import BadStatusLine
-from socket import error as SocketError
-from ssl import CertificateError
-from xml.etree import ElementTree as cElementTree
-from selenium import webdriver
-from selenium.webdriver import DesiredCapabilities
-from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentException
-from prettytable import PrettyTable
-
-# Assuming log.py is a module containing the LOGGER and other modules like cookie.py and config.py exist.
 from log import LOGGER
-from config import RESULT_DIR, REQUEST_ERROR, REDIRECT, TRAFFIC_DIR
-from cookie import get_cookie, get_cookie_ip, is_ip, get_cookies_list
+import argparse
+from multiprocessing import cpu_count
+from banner import banner
+from engine import Engine
+from util import save, gen_id, get_domain_from_url
 
-def which_type(character):
-    if re.search(r'\d', character):
-        return 'd'
-    elif re.search(r'[a-zA-Z]', character):
-        return 's'
-    else:
-        return 'm'
-
-def get_api(url):
-    path = url.split('?', 1)[0]
-    paths = path.split('/')
-    name_format = ''
-    if len(paths) > 4:
-        file_name = paths[-1] or paths[-2]
-        if '.' in file_name:
-            name, ext = file_name.split('.')
-            name_format = ''.join([which_type(char) for char in name if which_type(char) != 'd'])
-            name_format = (name_format if name_format else 'd') + '.' + ext
+if __name__=="__main__":
+    parser = argparse.ArgumentParser(prog="start.py",description='scan xss from url or file.',usage='start.py --url=url --save')
+    parser.add_argument('-v','--version', action='version', version='V1.0-beta')
+    parser.add_argument('--check', action='store_true', help='check if browser is installed correctly.')
+    parser.add_argument('--url','-u',help='the target site of scan.')
+    parser.add_argument('--id',action='store',help='rescan by task id.')
+    parser.add_argument('-f','--file',help='scan urls from text file.')
+    parser.add_argument('--burp', help='scan from *.xml from burpsuite proxy.')
+    parser.add_argument('--process',type=int,help='process number.')
+    parser.add_argument('-c','--coroutine',type=int,help='coroutine number.')
+    parser.add_argument('--cookie',action='store',help='use cookie.')
+    parser.add_argument('--filter', action='store_true', help='filter urls when use --file.')
+    parser.add_argument('--clear',action='store_true',help='delete traffic files after scan.')
+    parser.add_argument('--browser',action='store',help='scan with browser,is good at Dom-based xss but slow.')
+    parser.add_argument('--save',action='store_true',help='save result to json file.')
+    banner()
+    args=parser.parse_args()
+    if args.check:
+        from check import check_install
+        check_install()
+    # default
+    url,file,burp='','',''
+    filter=False
+    # default use number of cpu-core as processes
+    num=cpu_count()
+    # default
+    coroutine=200
+    if args.url:
+        from check import check_url
+        url=args.url
+        num=1
+        check_url(url)
+    if args.file:
+        file=args.file
+    if args.burp:
+        burp=args.burp
+    if args.filter:
+        filter=args.filter
+    browser=''
+    if args.browser:
+        browser=args.browser
+        # default 2 if use browser
+        num=2
+        if args.url:
+            num=1
+    if args.process:
+        num=args.process
+    if args.coroutine:
+        coroutine=args.coroutine
+    if args.cookie:
+        from cookie import save_cookie_ip, is_ip
+        if file:
+            with open(file)as f:
+                scope_url=f.readline().strip()
+        elif url:
+            scope_url=url
+        domain=get_domain_from_url(scope_url)
+        if is_ip(scope_url):
+            save_cookie_ip(args.cookie, domain)
         else:
-            name_format = ''.join([which_type(char) for char in file_name if which_type(char) != 'd'])
-            name_format = name_format if name_format else 'd'
-        paths[-1] = name_format
-    params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
-    param_keys = sorted(params.keys())
-    api = '@@@'.join(['/'.join(paths).strip('/'), '$$$'.join(param_keys)])
-    return api
-
-def change_by_param(url, param, tovalue):
-    url_parts = list(urllib.parse.urlparse(url))
-    query = dict(urllib.parse.parse_qsl(url_parts[4]))
-    query[param] = tovalue
-    url_parts[4] = urllib.parse.urlencode(query)
-    return urllib.parse.urlunparse(url_parts)
-
-def get_topdomain(domain):
-    parts = domain.split('.')
-    return '.'.join(parts[-2:]) if len(parts) > 2 else domain
-
-def get_domain_from_url(url):
-    try:
-        domain = urllib.parse.urlparse(url).netloc
-    except Exception as e:
-        LOGGER.warn('Get domain error, %s, %s' % (url, e))
-        domain = ''
-    return domain
-
-def list2dict(headers_list):
-    return {k.strip(): v.strip() for k, v in (header.split(':', 1) for header in headers_list if ':' in header)}
-
-def make_request(method, url, headers=None, body=None):
-    if method.upper() == 'GET':
-        request = urllib.request.Request(url, headers=headers)
-    else:
-        request = urllib.request.Request(url, data=body.encode('utf-8'), headers=headers)
-    try:
-        response = urllib.request.urlopen(request)
-        if response.url != url:
-            REDIRECT.append(url)
-        return response
-    except urllib.error.URLError as e:
-        REQUEST_ERROR.append(('make_request()', url, str(e.reason)))
-    except CertificateError:
-        REQUEST_ERROR.append(('make_request()', url, 'ssl.CertificateError'))
-    except Exception as e:
-        LOGGER.warn(str(e))
-
-def chrome(headless=False):
-    options = webdriver.ChromeOptions()
-    if headless:
-        options.add_argument("--headless")
-    options.add_experimental_option("excludeSwitches", ["enable-logging"])
-    browser = webdriver.Chrome(options=options)
-    return browser
-
-def phantomjs():
-    browser = webdriver.PhantomJS()
-    return browser
-
-def add_cookie(browser, url):
-    domain = get_domain_from_url(url)
-    cookies_list = get_cookies_list(domain)
-    for cookie in cookies_list:
-        browser.add_cookie(cookie)
-
-def getResponseHeaders(browser, log_type='performance'):
-    headers = {}
-    logs = browser.get_log(log_type)
-    for entry in logs:
+            from cookie import save_cookie
+            save_cookie(args.cookie, domain)
+    if url or file or burp or args.id or args.filter:
+        if args.id:
+            id=args.id
+            if not Engine.is_scanned(id):
+                LOGGER.error('Task %s not found,exit.'%id)
+                exit(0)
+        else:
+            id=gen_id()
+        engine=Engine(id=id,url=url,file=file,burp=burp,process=num,browser=browser,coroutine=coroutine,filter=filter)
         try:
-            response = json.loads(entry['message'])['message']['params']['response']
-            if response['url'] == browser.current_url:
-                headers = {header['name']: header['value'] for header in response['headers']}
-        except KeyError:
-            continue
-    return headers
+            result=engine.start()
+        except KeyboardInterrupt,e:
+            LOGGER.info(e)
+        else:
+            if result:
+                save(result, id)
+            else:
+                LOGGER.info('No xss found!')
+            if args.clear:
+                from util import clear
 
-def print_result_table(results):
-    table = PrettyTable(['ID', 'Vulnerability', 'URL', 'Proof of Concept'])
-    table.align = 'l'
-    for idx, (vul, url, poc) in enumerate(results, 1):
-        table.add_row([idx, vul, url, poc])
-    print(table)
-
-if __name__ == "__main__":
-    pass
+                clear(id)
+    else:
+        LOGGER.error('error: missing a mandatory option (--url, --file, --burp, --id)!')
