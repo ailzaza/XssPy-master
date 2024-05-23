@@ -1,115 +1,131 @@
-import argparse
+helper.py
 import requests
 from urllib.parse import urlencode
-from random import randint
 
-# Daftar payload sederhana untuk XSS
-default_payloads = [
-    "<script>alert('XSS')</script>",
-    "'\"><script>alert('XSS')</script>",
-    "<img src=x onerror=alert('XSS')>",
-]
+def session(proxies, headers, cookie):
+    r = requests.Session()
+    r.proxies = proxies
+    r.headers = headers
+    r.cookies.update(cookie)
+    return r
+
+log.py
+from datetime import datetime
+
+class Log:
+    @classmethod
+    def info(cls, text):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] [INFO] {text}")
+
+    @classmethod
+    def warning(cls, text):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] [WARNING] {text}")
+
+    @classmethod
+    def high(cls, text):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] [CRITICAL] {text}")
+
+
+core.py
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode
+import requests
+
+class core:
+    payload = "<script>alert('XSS')</script>"
+
+    @classmethod
+    def scan(cls, url, proxies=None, headers=None, cookies=None):
+        session = requests.Session()
+        session.proxies = proxies
+        session.headers = headers
+        session.cookies.update(cookies)
+
+        Log.info(f"Scanning URL: {url}")
+        try:
+            response = session.get(url)
+            if cls.payload in response.text:
+                Log.high(f"XSS vulnerability found at {url}")
+            else:
+                Log.info(f"No XSS vulnerability found at {url}")
+        except Exception as e:
+            Log.high(f"Error scanning URL {url}: {e}")
+
+crawler.py
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+import requests
+from multiprocessing import Process
+
+class crawler:
+    visited = []
+
+    @classmethod
+    def get_links(cls, base, proxies, headers, cookies):
+        links = []
+        session = requests.Session()
+        session.proxies = proxies
+        session.headers = headers
+        session.cookies.update(cookies)
+
+        response = session.get(base)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        for tag in soup.find_all("a", href=True):
+            url = tag["href"]
+            full_url = urljoin(base, url)
+            if full_url not in cls.visited:
+                cls.visited.append(full_url)
+                if full_url.startswith(base):
+                    links.append(full_url)
+        return links
+
+    @classmethod
+    def crawl(cls, base, depth, proxies, headers, cookies):
+        urls = cls.get_links(base, proxies, headers, cookies)
+        for url in urls:
+            if depth > 0:
+                Process(target=core.scan, args=(url, proxies, headers, cookies)).start()
+                cls.crawl(url, depth - 1, proxies, headers, cookies)
+
+
+pwnxss.py
+import argparse
+from lib.helper.helper import session
+from lib.helper.Log import Log
+from lib.core import core
+from lib.crawler.crawler import crawler
 
 epilog = """
 Github: https://www.github.com/pwn0sec/PwnXSS
 Version: 0.5 Final
 """
 
-def generate_payload(level):
-    # Untuk demonstrasi, kita akan mengembalikan salah satu payload dasar.
-    # Anda dapat mengganti ini dengan generator payload yang lebih kompleks.
-    if level >= 1 and level <= 6:
-        return default_payloads[:level]
-    else:
-        return default_payloads
-
-def scan_xss(url, payloads, method, user_agent, cookie, proxy):
-    results = []
-    headers = {'User-Agent': user_agent}
-    cookies = eval(cookie)
-    proxies = eval(proxy) if proxy else None
-
-    print("\nStart to request URL with requests.\n")
-
-    for payload in payloads:
-        params = {'q': payload}
-        full_url = f"{url}?{urlencode(params)}"
-        print(f"Start to put traffic: {full_url}")
-        try:
-            if method == 0 or method == 2:
-                response = requests.get(full_url, headers=headers, cookies=cookies, proxies=proxies)
-                if payload in response.text:
-                    print(f"\033[91mReflected XSS found in {full_url}\033[0m")
-                    results.append((1, "Reflected XSS", full_url))
-                else:
-                    print(f"No reflected XSS in {full_url}")
-                    results.append((0, "No XSS", full_url))
-
-            if method == 1 or method == 2:
-                response = requests.post(url, data=params, headers=headers, cookies=cookies, proxies=proxies)
-                if payload in response.text:
-                    print(f"\033[91mReflected XSS found in {full_url}\033[0m")
-                    results.append((1, "Reflected XSS", full_url))
-                else:
-                    print(f"No reflected XSS in {full_url}")
-                    results.append((0, "No XSS", full_url))
-
-        except Exception as e:
-            print(f"Error happened: {e}")
-            results.append((0, "Error", full_url))
-
-    print("\nResult summary:")
-    print("+----+-----------------+-------------------------------------+")
-    print("| ID | VUL             | URL                                 |")
-    print("+----+-----------------+-------------------------------------+")
-
-    for i, (vul_id, vul_desc, vul_url) in enumerate(results):
-        print(f"| {i+1}  | {vul_desc} | {vul_url} |")
-
-    print("+----+-----------------+-------------------------------------+")
-    return results
-
-def check(getopt):
-    payload = int(getopt.payload_level)
-    if payload > 6 and getopt.payload is None:
-        print("Do you want to use custom payload (Y/n)?")
-        answer = input("> ")
-        if answer.lower().strip() == "y":
-            print("Write the XSS payload below")
-            payload = input("> ")
-        else:
-            payload = generate_payload(randint(1, 6))
-    else:
-        payload = generate_payload(payload)
-
-    return payload if getopt.payload is None else [getopt.payload]
-
 def start():
-    parse = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
-                                    usage="XSSScanner -u <target> [options]",
-                                    epilog=epilog,
-                                    add_help=False)
-    pos_opt = parse.add_argument_group("Options")
-    pos_opt.add_argument("--help", action="store_true", default=False, help="Show usage and help parameters")
-    pos_opt.add_argument("-u", metavar="", help="Target URL (e.g. http://testphp.vulnweb.com)")
-    pos_opt.add_argument("--payload-level", metavar="", help="Level for payload generator, 7 for custom payload. {1...6}. Default: 6", default=6)
-    pos_opt.add_argument("--payload", metavar="", help="Load custom payload directly (e.g. <script>alert(2005)</script>)", default=None)
-    pos_opt.add_argument("--method", metavar="", help="Method setting(s): \n\t0: GET\n\t1: POST\n\t2: GET and POST (default)", default=2, type=int)
-    pos_opt.add_argument("--user-agent", metavar="", help="Request user agent (e.g. Chrome/2.1.1/...)", default="Mozilla/5.0")
-    pos_opt.add_argument("--proxy", default=None, metavar="", help="Set proxy (e.g. {'https':'https://10.10.1.10:1080'})")
-    pos_opt.add_argument("--cookie", help="Set cookie (e.g {'ID':'1094200543'})", default='''{"ID":"1094200543"}''', metavar="")
-
-    getopt = parse.parse_args()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, usage="PwnXSS -u <target> [options]", epilog=epilog, add_help=False)
     
-    if getopt.help:
-        parse.print_help()
+    parser.add_argument("--help", action="store_true", default=False, help="Show usage and help parameters")
+    parser.add_argument("-u", metavar="", help="Target URL (e.g. http://testphp.vulnweb.com)")
+    parser.add_argument("--depth", metavar="", help="Depth web page to crawl. Default: 2", default=2, type=int)
+    parser.add_argument("--proxy", default=None, metavar="", help="Set proxy (e.g. {'https':'https://10.10.1.10:1080'})")
+    parser.add_argument("--user-agent", metavar="", help="Request user agent (e.g. Chrome/2.1.1/...)", default="Mozilla/5.0")
+    parser.add_argument("--cookie", help="Set cookie (e.g {'ID':'1094200543'})", default='''{"ID":"1094200543"}''', metavar="")
+
+    args = parser.parse_args()
+    
+    if args.help:
+        parser.print_help()
         return
 
-    if getopt.u:
-        payloads = check(getopt)
-        scan_xss(getopt.u, payloads, getopt.method, getopt.user_agent, getopt.cookie, getopt.proxy)
+    headers = {'User-Agent': args.user_agent}
+    proxies = eval(args.proxy) if args.proxy else None
+    cookies = eval(args.cookie)
+    
+    if args.u:
+        core.scan(args.u, proxies, headers, cookies)
+        crawler.crawl(args.u, args.depth, proxies, headers, cookies)
     else:
-        parse.print_help()
+        parser.print_help()
 
 if __name__ == "__main__":
     start()
