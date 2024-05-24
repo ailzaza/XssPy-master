@@ -44,3 +44,7 @@ url = "http://example.com/search"
 
 # Menjalankan pemindai XSS
 scan_xss(url)
+
+with open('payloads.txt', 'r', encoding='utf-8') as payloadlist:
+    xss_payloads = [word.strip() for word in payloadlist.readlines()]
+
