@@ -412,7 +412,7 @@ def divide_list(a,b):
     return result
 
 def gen_id():
-    return ''.join([(hex(ord(xx))[2:]) for xx in os.urandom(8)])
+    return ''.join([hex(xx)[2:] for xx in os.urandom(8)])
 
 def print_result_table(result):
     '''
