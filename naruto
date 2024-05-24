@@ -1,3 +1,25 @@
+log.py
+from lib.helper.helper import * 
+from datetime import datetime
+
+class Log:
+
+    @classmethod
+    def info(cls, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+G+"INFO"+N+"] "+text)
+
+    @classmethod
+    def warning(cls, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+Y+"WARNING"+N+"] "+text)
+
+    @classmethod
+    def reflected_xss(cls, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"REFLECTED XSS"+N+"] "+text)
+
+    @classmethod
+    def dom_xss(cls, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"DOM XSS"+N+"] "+text)
+
 core.py
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
@@ -7,7 +29,7 @@ class core:
     @classmethod
     def detect_reflected_xss(cls, response_text):
         if cls.payload in response_text:
-            Log.high("Detected Reflected XSS at " + cls.url)
+            Log.reflected_xss("Detected Reflected XSS at " + cls.url)
             with open("reflected_xss.txt", "a") as file:
                 file.write(cls.url + "\n")
             return True
@@ -55,10 +77,10 @@ class core:
                         continue
                 response = cls.session.post(urljoin(cls.url, action), data=keys)
                 if cls.detect_reflected_xss(response.text):
-                    Log.high("Detected XSS (POST) at " + urljoin(cls.url, action))
+                    Log.reflected_xss("Detected XSS (POST) at " + urljoin(cls.url, action))
                     with open("xss.txt", "a") as file:
                         file.write(urljoin(cls.url, action) + "\n")
-                    Log.high("Post data: " + str(keys))
+                    Log.reflected_xss("Post data: " + str(keys))
                 else:
                     Log.info("Parameter page using (POST) payloads but not 100% yet...")
 
@@ -87,7 +109,6 @@ class core:
         elif method == 0:
             cls.get_method()
 
-
 crawler.py
 from bs4 import BeautifulSoup
 import requests
@@ -102,7 +123,7 @@ class crawler:
         scripts = soup.find_all("script")
         for script in scripts:
             if cls.contains_dom_xss(script):
-                Log.high("Detected DOM XSS in script at " + base)
+                Log.dom_xss("Detected DOM XSS in script at " + base)
                 with open("dom_xss.txt", "a") as file:
                     file.write(base + "\n")
                 return True
