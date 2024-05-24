@@ -2,11 +2,13 @@ import requests
 from urllib.parse import urlencode
 
 # Daftar payload sederhana untuk XSS
-payloads = [
-    "<script>alert('XSS')</script>",
-    "'\"><script>alert('XSS')</script>",
-    "<img src=x onerror=alert('XSS')>",
-]
+with open('payloads.txt', 'r', encoding='utf-8') as payloadlist:
+    payloads = [word.strip() for word in payloadlist.readlines()]
+#payloads = [
+  #  "<script>alert('XSS')</script>",
+ #   "'\"><script>alert('XSS')</script>",
+#    "<img src=x onerror=alert('XSS')>",
+#]
 
 def scan_xss(url):
     results = []
@@ -29,14 +31,14 @@ def scan_xss(url):
             results.append((0, "Error", full_url))
 
     print("\nResult summary:")
-    print("+----+-----------------+-------------------------------------+")
-    print("| ID | VUL             | URL                                 |")
-    print("+----+-----------------+-------------------------------------+")
+    print("+----+-----------------+------------------------------------------------------------------------------------------------+")
+    print("| ID               | VUL                                  | URL                                                         |")
+    print("+----+-----------------+------------------------------------------------------------------------------------------------+")
 
     for i, (vul_id, vul_desc, vul_url) in enumerate(results):
         print(f"| {i+1}  | {vul_desc} | {vul_url} |")
 
-    print("+----+-----------------+-------------------------------------+")
+    print("+----+-----------------+------------------------------------------------------------------------------------------------+")
     return results
 
 # URL target
@@ -44,7 +46,3 @@ url = "http://example.com/search"
 
 # Menjalankan pemindai XSS
 scan_xss(url)
-
-with open('payloads.txt', 'r', encoding='utf-8') as payloadlist:
-    xss_payloads = [word.strip() for word in payloadlist.readlines()]
-
