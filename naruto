@@ -28,6 +28,9 @@ class Logger:
     def critical(self, message):
         self.logger.critical(message)
 
+    def summary(self, summary_message):
+        self.logger.critical(f"SUMMARY: {summary_message}")
+
 
 import requests
 from urllib.parse import urlencode
@@ -42,6 +45,7 @@ with open('payloads.txt', 'r', encoding='utf-8') as payloadlist:
 
 def scan_xss(url):
     results = []
+    critical_found = False
     logger.info("Start to request URL with requests.")
 
     for payload in payloads:
@@ -53,6 +57,7 @@ def scan_xss(url):
             if payload in response.text:
                 logger.critical(f"Reflected XSS found in {full_url}")
                 results.append((1, "Reflected XSS", full_url))
+                critical_found = True
             else:
                 logger.info(f"No reflected XSS in {full_url}")
                 results.append((0, "No XSS", full_url))
@@ -69,6 +74,12 @@ def scan_xss(url):
         logger.info(f"| {i+1}  | {vul_desc} | {vul_url} |")
 
     logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
+
+    if critical_found:
+        logger.summary("Critical vulnerability found during the scan.")
+    else:
+        logger.info("No critical vulnerabilities found during the scan.")
+
     return results
 
 # URL target
@@ -76,3 +87,4 @@ url = "http://example.com/search"
 
 # Menjalankan pemindai XSS
 scan_xss(url)
+
