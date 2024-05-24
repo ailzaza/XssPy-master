@@ -1,90 +1,130 @@
-log.py
-import logging
+core.py
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 
-class Logger:
-    def __init__(self, log_file='scanner.log'):
-        self.logger = logging.getLogger('XSSScanner')
-        self.logger.setLevel(logging.DEBUG)
-        # Create file handler which logs even debug messages
-        fh = logging.FileHandler(log_file)
-        fh.setLevel(logging.DEBUG)
-        # Create console handler with a higher log level
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-        # Create formatter and add it to the handlers
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        fh.setFormatter(formatter)
-        ch.setFormatter(formatter)
-        # Add the handlers to logger
-        self.logger.addHandler(fh)
-        self.logger.addHandler(ch)
+class core:
+    
+    @classmethod
+    def detect_reflected_xss(cls, response_text):
+        if cls.payload in response_text:
+            Log.high("Detected Reflected XSS at " + cls.url)
+            with open("reflected_xss.txt", "a") as file:
+                file.write(cls.url + "\n")
+            return True
+        return False
 
-    def info(self, message):
-        self.logger.info(message)
-
-    def warning(self, message):
-        self.logger.warning(message)
-
-    def critical(self, message):
-        self.logger.critical(message)
-
-    def summary(self, summary_message):
-        self.logger.critical(f"SUMMARY: {summary_message}")
-
-
-import requests
-from urllib.parse import urlencode
-from log import Logger
-
-# Inisialisasi logger
-logger = Logger()
-
-# Daftar payload sederhana untuk XSS
-with open('payloads.txt', 'r', encoding='utf-8') as payloadlist:
-    payloads = [word.strip() for word in payloadlist.readlines()]
-
-def scan_xss(url):
-    results = []
-    critical_found = False
-    logger.info("Start to request URL with requests.")
-
-    for payload in payloads:
-        params = {'q': payload}
-        full_url = f"{url}?{urlencode(params)}"
-        logger.info(f"Start to put traffic: {full_url}")
-        try:
-            response = requests.get(full_url)
-            if payload in response.text:
-                logger.critical(f"Reflected XSS found in {full_url}")
-                results.append((1, "Reflected XSS", full_url))
-                critical_found = True
+    @classmethod
+    def get_method(cls):
+        bsObj = BeautifulSoup(cls.body, "html.parser")
+        links = bsObj.find_all("a", href=True)
+        for a in links:
+            url = a["href"]
+            if url.startswith("http://") or url.startswith("https://"):
+                base = urljoin(cls.url, a["href"])
+                query = urlparse(base).query
+                if query != "":
+                    Log.warning("Found link with query: " + query + " Maybe a vuln XSS point")
+                    query_payload = query.replace(query[query.find("=")+1:], cls.payload, 1)
+                    test = base.replace(query, query_payload, 1)
+                    query_all = base.replace(query, urlencode({x: cls.payload for x in parse_qs(query)}))
+                    response_test = cls.session.get(test, verify=False)
+                    response_all = cls.session.get(query_all, verify=False)
+                    if cls.detect_reflected_xss(response_test.text) or cls.detect_reflected_xss(response_all.text):
+                        continue
+                    else:
+                        Log.info("Parameter page using (GET) payloads but not 100% yet...")
             else:
-                logger.info(f"No reflected XSS in {full_url}")
-                results.append((0, "No XSS", full_url))
+                Log.info("URL is not an HTTP url, ignoring")
+
+    @classmethod
+    def post_method(cls):
+        bsObj = BeautifulSoup(cls.body, "html.parser")
+        forms = bsObj.find_all("form", method=True)
+        for form in forms:
+            try:
+                action = form["action"]
+            except KeyError:
+                action = cls.url
+            if form["method"].lower().strip() == "post":
+                Log.warning("Target have form with POST method: " + urljoin(cls.url, action))
+                keys = {}
+                for key in form.find_all(["input", "textarea"]):
+                    try:
+                        keys.update({key["name"]: cls.payload})
+                    except KeyError:
+                        continue
+                response = cls.session.post(urljoin(cls.url, action), data=keys)
+                if cls.detect_reflected_xss(response.text):
+                    Log.high("Detected XSS (POST) at " + urljoin(cls.url, action))
+                    with open("xss.txt", "a") as file:
+                        file.write(urljoin(cls.url, action) + "\n")
+                    Log.high("Post data: " + str(keys))
+                else:
+                    Log.info("Parameter page using (POST) payloads but not 100% yet...")
+
+    @classmethod
+    def main(cls, url, proxy, headers, payload, cookie, method=2):
+        cls.payload = payload
+        cls.url = url
+        cls.session = session(proxy, headers, cookie)
+        Log.info("Checking connection to: " + url)
+        try:
+            ctr = cls.session.get(url)
+            cls.body = ctr.text
         except Exception as e:
-            logger.warning(f"Error happened: {e}")
-            results.append((0, "Error", full_url))
+            Log.high("Internal error: " + str(e))
+            return
+        if ctr.status_code > 400:
+            Log.info("Connection failed " + str(ctr.status_code))
+            return
+        else:
+            Log.info("Connection established " + str(ctr.status_code))
+        if method >= 2:
+            cls.post_method()
+            cls.get_method()
+        elif method == 1:
+            cls.post_method()
+        elif method == 0:
+            cls.get_method()
 
-    logger.info("Result summary:")
-    logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
-    logger.info("| ID | VUL             | URL                                                                                            |")
-    logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
 
-    for i, (vul_id, vul_desc, vul_url) in enumerate(results):
-        logger.info(f"| {i+1}  | {vul_desc} | {vul_url} |")
+crawler.py
+from bs4 import BeautifulSoup
+import requests
 
-    logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
+class crawler:
 
-    if critical_found:
-        logger.summary("Critical vulnerability found during the scan.")
-    else:
-        logger.info("No critical vulnerabilities found during the scan.")
+    @classmethod
+    def detect_dom_xss(cls, base, proxy, headers, cookie):
+        conn = session(proxy, headers, cookie)
+        text = conn.get(base).text
+        soup = BeautifulSoup(text, "html.parser")
+        scripts = soup.find_all("script")
+        for script in scripts:
+            if cls.contains_dom_xss(script):
+                Log.high("Detected DOM XSS in script at " + base)
+                with open("dom_xss.txt", "a") as file:
+                    file.write(base + "\n")
+                return True
+        return False
 
-    return results
+    @classmethod
+    def contains_dom_xss(cls, script):
+        if "document.write" in script.text or "innerHTML" in script.text:
+            return True
+        return False
 
-# URL target
-url = "http://example.com/search"
-
-# Menjalankan pemindai XSS
-scan_xss(url)
-
+    @classmethod
+    def crawl(cls, base, depth, proxy, headers, level, method, cookie):
+        urls = cls.getLinks(base, proxy, headers, cookie)
+        for url in urls:
+            if url.startswith("https://") or url.startswith("http://"):
+                if cls.detect_dom_xss(url, proxy, headers, cookie):
+                    continue
+                p = Process(target=core.main, args=(url, proxy, headers, level, cookie, method))
+                p.start()
+                p.join()
+                if depth != 0:
+                    cls.crawl(url, depth - 1, base, proxy, level, method, cookie)
+                else:
+                    break
