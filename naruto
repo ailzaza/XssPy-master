@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 # -*- encoding: utf-8 -*-
 """
     @Description: Cli
@@ -14,7 +14,8 @@ from banner import banner
 from engine import Engine
 from util import save, gen_id, get_domain_from_url
 
-if __name__=="__main__": 
+if __name__=="__main__":
+
     parser = argparse.ArgumentParser(prog="start.py",description='scan xss from url or file.',usage='start.py --url=url --save')
     parser.add_argument('-v','--version', action='version', version='V1.0-beta')
     parser.add_argument('--check', action='store_true', help='check if browser is installed correctly.')
