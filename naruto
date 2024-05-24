@@ -1,2 +1,1 @@
-    with open('payloads.txt', 'r', encoding='utf-8') as payloadlist:
-        xss_payloads=set(word.strip() for word in payloadlist.readlines())
+python3 xss_scanner.py --url="http://example.com/?param1=value1&param2=value2"
