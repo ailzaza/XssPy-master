@@ -1,131 +1,102 @@
-helper.py
-import requests
-from urllib.parse import urlencode
-
-def session(proxies, headers, cookie):
-    r = requests.Session()
-    r.proxies = proxies
-    r.headers = headers
-    r.cookies.update(cookie)
-    return r
-
-log.py
-from datetime import datetime
-
-class Log:
-    @classmethod
-    def info(cls, text):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] [INFO] {text}")
-
-    @classmethod
-    def warning(cls, text):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] [WARNING] {text}")
-
-    @classmethod
-    def high(cls, text):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] [CRITICAL] {text}")
-
-
-core.py
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse, parse_qs, urlencode
-import requests
-
-class core:
-    payload = "<script>alert('XSS')</script>"
-
-    @classmethod
-    def scan(cls, url, proxies=None, headers=None, cookies=None):
-        session = requests.Session()
-        session.proxies = proxies
-        session.headers = headers
-        session.cookies.update(cookies)
-
-        Log.info(f"Scanning URL: {url}")
-        try:
-            response = session.get(url)
-            if cls.payload in response.text:
-                Log.high(f"XSS vulnerability found at {url}")
-            else:
-                Log.info(f"No XSS vulnerability found at {url}")
-        except Exception as e:
-            Log.high(f"Error scanning URL {url}: {e}")
-
-crawler.py
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-import requests
-from multiprocessing import Process
-
-class crawler:
-    visited = []
-
-    @classmethod
-    def get_links(cls, base, proxies, headers, cookies):
-        links = []
-        session = requests.Session()
-        session.proxies = proxies
-        session.headers = headers
-        session.cookies.update(cookies)
-
-        response = session.get(base)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        for tag in soup.find_all("a", href=True):
-            url = tag["href"]
-            full_url = urljoin(base, url)
-            if full_url not in cls.visited:
-                cls.visited.append(full_url)
-                if full_url.startswith(base):
-                    links.append(full_url)
-        return links
-
-    @classmethod
-    def crawl(cls, base, depth, proxies, headers, cookies):
-        urls = cls.get_links(base, proxies, headers, cookies)
-        for url in urls:
-            if depth > 0:
-                Process(target=core.scan, args=(url, proxies, headers, cookies)).start()
-                cls.crawl(url, depth - 1, proxies, headers, cookies)
-
-
-pwnxss.py
-import argparse
-from lib.helper.helper import session
-from lib.helper.Log import Log
-from lib.core import core
-from lib.crawler.crawler import crawler
-
-epilog = """
-Github: https://www.github.com/pwn0sec/PwnXSS
-Version: 0.5 Final
+#!/usr/bin/python2.7
+# -*- encoding: utf-8 -*-
 """
-
-def start():
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, usage="PwnXSS -u <target> [options]", epilog=epilog, add_help=False)
+    @Description: Cli
     
-    parser.add_argument("--help", action="store_true", default=False, help="Show usage and help parameters")
-    parser.add_argument("-u", metavar="", help="Target URL (e.g. http://testphp.vulnweb.com)")
-    parser.add_argument("--depth", metavar="", help="Depth web page to crawl. Default: 2", default=2, type=int)
-    parser.add_argument("--proxy", default=None, metavar="", help="Set proxy (e.g. {'https':'https://10.10.1.10:1080'})")
-    parser.add_argument("--user-agent", metavar="", help="Request user agent (e.g. Chrome/2.1.1/...)", default="Mozilla/5.0")
-    parser.add_argument("--cookie", help="Set cookie (e.g {'ID':'1094200543'})", default='''{"ID":"1094200543"}''', metavar="")
+    ~~~~~~ 
+    @Author  : longwenzhang
+    @Time    : 19-10-9  10:13
+"""
+from log import LOGGER
+import argparse
+from multiprocessing import cpu_count
+from banner import banner
+from engine import Engine
+from util import save, gen_id, get_domain_from_url
 
-    args = parser.parse_args()
-    
-    if args.help:
-        parser.print_help()
-        return
+if __name__=="__main__": 
+    parser = argparse.ArgumentParser(prog="start.py",description='scan xss from url or file.',usage='start.py --url=url --save')
+    parser.add_argument('-v','--version', action='version', version='V1.0-beta')
+    parser.add_argument('--check', action='store_true', help='check if browser is installed correctly.')
+    parser.add_argument('--url','-u',help='the target site of scan.')
+    parser.add_argument('--id',action='store',help='rescan by task id.')
+    parser.add_argument('-f','--file',help='scan urls from text file.')
+    parser.add_argument('--burp', help='scan from *.xml from burpsuite proxy.')
+    parser.add_argument('--process',type=int,help='process number.')
+    parser.add_argument('-c','--coroutine',type=int,help='coroutine number.')
+    parser.add_argument('--cookie',action='store',help='use cookie.')
+    parser.add_argument('--filter', action='store_true', help='filter urls when use --file.')
+    parser.add_argument('--clear',action='store_true',help='delete traffic files after scan.')
+    parser.add_argument('--browser',action='store',help='scan with browser,is good at Dom-based xss but slow.')
+    parser.add_argument('--save',action='store_true',help='save result to json file.')
+    banner()
+    args=parser.parse_args()
+    if args.check:
+        from check import check_install
+        check_install()
+    # default
+    url,file,burp='','',''
+    filter=False
+    # default use number of cpu-core as processes
+    num=cpu_count()
+    # default
+    coroutine=200
+    if args.url:
+        from check import check_url
+        url=args.url
+        num=1
+        check_url(url)
+    if args.file:
+        file=args.file
+    if args.burp:
+        burp=args.burp
+    if args.filter:
+        filter=args.filter
+    browser=''
+    if args.browser:
+        browser=args.browser
+        # default 2 if use browser
+        num=2
+        if args.url:
+            num=1
+    if args.process:
+        num=args.process
+    if args.coroutine:
+        coroutine=args.coroutine
+    if args.cookie:
+        from cookie import save_cookie_ip, is_ip
+        if file:
+            with open(file)as f:
+                scope_url=f.readline().strip()
+        elif url:
+            scope_url=url
+        domain=get_domain_from_url(scope_url)
+        if is_ip(scope_url):
+            save_cookie_ip(args.cookie, domain)
+        else:
+            from cookie import save_cookie
+            save_cookie(args.cookie, domain)
+    if url or file or burp or args.id or args.filter:
+        if args.id:
+            id=args.id
+            if not Engine.is_scanned(id):
+                LOGGER.error('Task %s not found,exit.'%id)
+                exit(0)
+        else:
+            id=gen_id()
+        engine=Engine(id=id,url=url,file=file,burp=burp,process=num,browser=browser,coroutine=coroutine,filter=filter)
+        try:
+            result=engine.start()
+        except KeyboardInterrupt as e:
+            LOGGER.info(e)
+        else:
+            if result:
+                save(result, id)
+            else:
+                LOGGER.info('No xss found!')
+            if args.clear:
+                from util import clear
 
-    headers = {'User-Agent': args.user_agent}
-    proxies = eval(args.proxy) if args.proxy else None
-    cookies = eval(args.cookie)
-    
-    if args.u:
-        core.scan(args.u, proxies, headers, cookies)
-        crawler.crawl(args.u, args.depth, proxies, headers, cookies)
+                clear(id)
     else:
-        parser.print_help()
-
-if __name__ == "__main__":
-    start()
+        LOGGER.error('error: missing a mandatory option (--url, --file, --burp, --id)!')
