@@ -196,7 +196,7 @@ class core:
             Log.info("Connection failed " + G + str(ctr.status_code))
             return 
         else:
-            Log.info("Connection estabilished " + G + str(ctr.status_code))
+            Log.info("Connection established " + G + str(ctr.status_code))
         
         if method >= 2:
             cls.post_method()
@@ -260,9 +260,10 @@ def start():
         
     elif getopt.single:
         core.main(getopt.single, getopt.proxy, getopt.user_agent, check(getopt), getopt.cookie, getopt.method)
+    
+    core.print_critical_results()
         
 if __name__ == "__main__":
     start()
-
 
 
