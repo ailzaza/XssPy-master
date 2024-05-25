@@ -24,6 +24,16 @@ class crawler:
         return False
 
     @classmethod
+    def getLinks(cls, base, proxy, headers, cookie):
+        conn = session(proxy, headers, cookie)
+        text = conn.get(base).text
+        soup = BeautifulSoup(text, "html.parser")
+        links = []
+        for a_tag in soup.find_all("a", href=True):
+            links.append(a_tag['href'])
+        return links
+
+    @classmethod
     def crawl(cls, base, depth, proxy, headers, level, method, cookie):
         urls = cls.getLinks(base, proxy, headers, cookie)
         for url in urls:
