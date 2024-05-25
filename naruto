@@ -180,19 +180,37 @@ class core:
 log.py
 from lib.helper.helper import * 
 from datetime import datetime
+
 class Log:
+    @classmethod
+    def info(self, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+G+"INFO"+N+"] "+text)
+    
+    @classmethod
+    def warning(self, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+Y+"WARNING"+N+"] "+text)
+    
+    @classmethod
+    def high(self, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"CRITICAL"+N+"] "+text)
 
-	@classmethod
-	def info(self,text):
- 		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+G+"INFO"+N+"] "+text)
- 
-	@classmethod
-	def warning(self,text):
-		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+Y+"WARNING"+N+"] "+text)
+    @classmethod
+    def xss_reflected(self, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"XSS_REFLECTED"+N+"] "+text)
 
-	@classmethod
-	def high(self,text):
- 		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"CRITICAL"+N+"] "+text)
+    @classmethod
+    def xss_dom(self, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"XSS_DOM"+N+"] "+text)
+
+    @classmethod
+    def xss_stored(self, text):
+        print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"XSS_STORED"+N+"] "+text)
+
+# Contoh penggunaan
+Log.xss_reflected("Reflected XSS detected in user input.")
+Log.xss_dom("DOM-based XSS detected in script execution.")
+Log.xss_stored("Stored XSS detected in database entry.")
+
 
 
 
