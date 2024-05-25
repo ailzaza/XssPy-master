@@ -1,3 +1,4 @@
+core.py
 from lib.helper.helper import *
 from random import randint
 from bs4 import BeautifulSoup
@@ -5,11 +6,18 @@ from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 from lib.helper.Log import *
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import os
+import logging
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+# Konfigurasi logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class core:
-    
+
+    critical_results = []
+
     @classmethod
     def load_payloads(cls, filename):
         filepath = os.path.join(os.path.dirname(__file__), filename)
@@ -63,6 +71,11 @@ class core:
                 req = cls.session.post(urljoin(cls.url, action), data=keys)
                 if cls.payload in req.text:
                     Log.high("Detected XSS (POST) at " + urljoin(cls.url, req.url))
+                    cls.critical_results.append({
+                        "ID": len(cls.critical_results) + 1,
+                        "URL": req.url,
+                        "POC": f"POST$$$$$$urljoin(cls.url, action)"
+                    })
                     with open("xss.txt", "a") as file:
                         file.write(str(req.url) + "\n\n")
                     Log.high("Post data: " + str(keys))
@@ -105,6 +118,11 @@ class core:
                 req = cls.session.get(urljoin(cls.url, action), params=keys)
                 if cls.payload in req.text:
                     Log.high("Detected XSS (GET) at " + urljoin(cls.url, req.url))
+                    cls.critical_results.append({
+                        "ID": len(cls.critical_results) + 1,
+                        "URL": req.url,
+                        "POC": f"GET$$$$$$urljoin(cls.url, action)"
+                    })
                     with open("xss.txt", "a") as file:
                         file.write(str(req.url) + "\n\n")
                     Log.high("GET data: " + str(keys))
@@ -135,12 +153,28 @@ class core:
                         _respon = cls.session.get(test, verify=False)
                         if cls.payload in _respon.text or cls.payload in cls.session.get(query_all).text:
                             Log.high("Detected XSS (GET) at " + _respon.url)
+                            cls.critical_results.append({
+                                "ID": len(cls.critical_results) + 1,
+                                "URL": _respon.url,
+                                "POC": f"GET$$$$$$test"
+                            })
                             with open("xss.txt", "a") as file:
                                 file.write(str(_respon.url) + "\n\n")
                         else:
                             Log.info("Parameter page using (GET) payloads but not 100% yet...")
                     else:
                         Log.info("URL is not an HTTP url, ignoring")
+    
+    @classmethod
+    def print_critical_results(cls):
+        logger.info("Result summary:")
+        logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
+        logger.info("| ID | URL             | POC                                                                                            |")
+        logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
+        for result in cls.critical_results:
+            row = f"| {result['ID']:<2} | {result['URL']:<15} | {result['POC']:<95} |"
+            logger.info(row)
+        logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
     
     @classmethod
     def main(cls, url, proxy, headers, payload, cookie, method=2):
@@ -175,3 +209,7 @@ class core:
         elif method == 0:
             cls.get_method()
             cls.get_method_form()
+        
+        cls.print_critical_results()
+
+
