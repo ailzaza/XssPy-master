@@ -176,3 +176,131 @@ class core:
         elif method == 0:
             cls.get_method()
             cls.get_method_form()
+
+log.py
+from lib.helper.helper import * 
+from datetime import datetime
+class Log:
+
+	@classmethod
+	def info(self,text):
+ 		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+G+"INFO"+N+"] "+text)
+ 
+	@classmethod
+	def warning(self,text):
+		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+Y+"WARNING"+N+"] "+text)
+
+	@classmethod
+	def high(self,text):
+ 		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"CRITICAL"+N+"] "+text)
+
+
+
+crawler.py
+import requests
+from lib.helper.Log import *
+from lib.helper.helper import *
+from lib.core import *
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from multiprocessing import Process
+
+class crawler:
+	
+	visited=[]
+	
+	@classmethod
+	def getLinks(self,base,proxy,headers,cookie):
+
+		lst=[]
+	
+		conn=session(proxy,headers,cookie)
+		text=conn.get(base).text
+		isi=BeautifulSoup(text,"html.parser")
+	
+		
+		for obj in isi.find_all("a",href=True):
+			url=obj["href"]
+			
+			
+			if urljoin(base,url) in self.visited:
+				continue
+
+			elif url.startswith("mailto:") or url.startswith("javascript:"):
+				continue
+	# :// will check if there any subdomain or any other domain but it will pass directory		
+			elif url.startswith(base) or "://" not in url :
+				lst.append(urljoin(base,url))
+				self.visited.append(urljoin(base,url))
+			
+		return lst
+
+	@classmethod
+	def crawl(self,base,depth,proxy,headers,level,method,cookie):
+
+		urls=self.getLinks(base,proxy,headers,cookie)
+		
+		for url in urls:
+			if url.startswith("https://") or url.startswith("http://"):
+				p=Process(target=core.main, args=(url,proxy,headers,level,cookie,method))
+				p.start()
+				p.join()
+				if depth != 0:
+					self.crawl(url,depth-1,base,proxy,level,method,cookie)
+					
+				else:
+					break	
+
+
+pwnxss.py
+import argparse
+from lib.helper.helper import *
+from lib.helper.Log import *
+from lib.core import core
+from random import randint
+from lib.crawler.crawler import *
+
+def check(getopt):
+    payload_level = int(getopt.payload_level)
+    if payload_level > 6 and getopt.payload is None:
+        Log.info("Do you want use custom payload (Y/n)?")
+        answer = input("> " + W) 
+        if answer.lower().strip() == "y":
+            Log.info("Write the XSS payload below")
+            payload = input("> " + W)
+        else:
+            payload = core.generate(randint(1, 6))
+    else:
+        payload = core.generate(payload_level)
+    
+    return payload if getopt.payload is None else getopt.payload
+
+def start():
+    parse = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, usage="PwnXSS -u <target> [options]", add_help=False)
+    
+    pos_opt = parse.add_argument_group("Options")
+    pos_opt.add_argument("--help", action="store_true", default=False, help="Show usage and help parameters")
+    pos_opt.add_argument("-u", metavar="", help="Target url (e.g. http://testphp.vulnweb.com)")
+    pos_opt.add_argument("--depth", metavar="", help="Depth web page to crawl. Default: 2", default=2)
+    pos_opt.add_argument("--payload-level", metavar="", help="Level for payload Generator, 7 for custom payload. {1...6}. Default: 6", default=6)
+    pos_opt.add_argument("--payload", metavar="", help="Load custom payload directly (e.g. <script>alert(2005)</script>)", default=None)
+    pos_opt.add_argument("--method", metavar="", help="Method setting(s): \n\t0: GET\n\t1: POST\n\t2: GET and POST (default)", default=2, type=int)
+    pos_opt.add_argument("--user-agent", metavar="", help="Request user agent (e.g. Chrome/2.1.1/...)", default=agent)
+    pos_opt.add_argument("--single", metavar="", help="Single scan. No crawling just one address")
+    pos_opt.add_argument("--proxy", default=None, metavar="", help="Set proxy (e.g. {'https':'https://10.10.1.10:1080'})")
+    pos_opt.add_argument("--about", action="store_true", help="Print information about PwnXSS tool")
+    pos_opt.add_argument("--cookie", help="Set cookie (e.g {'ID':'1094200543'})", default='''{"ID":"1094200543"}''', metavar="")
+    
+    getopt = parse.parse_args()
+    Log.info("Starting PwnXSS...")
+    if getopt.u:
+        core.main(getopt.u, getopt.proxy, getopt.user_agent, check(getopt), getopt.cookie, getopt.method)
+        
+        crawler.crawl(getopt.u, int(getopt.depth), getopt.proxy, getopt.user_agent, check(getopt), getopt.method, getopt.cookie)
+        
+    elif getopt.single:
+        core.main(getopt.single, getopt.proxy, getopt.user_agent, check(getopt), getopt.cookie, getopt.method)
+        
+if __name__ == "__main__":
+    start()
+
