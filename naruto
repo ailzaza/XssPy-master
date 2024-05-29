@@ -1,3 +1,101 @@
+crawler.py
+import requests
+from lib.helper.Log import *
+from lib.helper.helper import *
+from lib.core import *
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from multiprocessing import Process
+
+class crawler:
+	
+	visited=[]
+	
+	@classmethod
+	def getLinks(self,base,proxy,headers,cookie):
+
+		lst=[]
+	
+		conn=session(proxy,headers,cookie)
+		text=conn.get(base).text
+		isi=BeautifulSoup(text,"html.parser")
+	
+		
+		for obj in isi.find_all("a",href=True):
+			url=obj["href"]
+			
+			
+			if urljoin(base,url) in self.visited:
+				continue
+
+			elif url.startswith("mailto:") or url.startswith("javascript:"):
+				continue
+	# :// will check if there any subdomain or any other domain but it will pass directory		
+			elif url.startswith(base) or "://" not in url :
+				lst.append(urljoin(base,url))
+				self.visited.append(urljoin(base,url))
+			
+		return lst
+
+	@classmethod
+	def crawl(self,base,depth,proxy,headers,level,method,cookie):
+
+		urls=self.getLinks(base,proxy,headers,cookie)
+		
+		for url in urls:
+			if url.startswith("https://") or url.startswith("http://"):
+				p=Process(target=core.main, args=(url,proxy,headers,level,cookie,method))
+				p.start()
+				p.join()
+				if depth != 0:
+					self.crawl(url,depth-1,base,proxy,level,method,cookie)
+					
+				else:
+					break	
+
+
+helper.py
+import requests, json
+##### Warna ####### 
+N = '\033[0m'
+W = '\033[1;37m' 
+B = '\033[1;34m' 
+M = '\033[1;35m' 
+R = '\033[1;31m' 
+G = '\033[1;32m' 
+Y = '\033[1;33m' 
+C = '\033[1;36m' 
+##### Styling ######
+underline = "\033[4m"
+##### Default ######
+agent = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'} 
+line="—————————————————" 
+#####################
+def session(proxies,headers,cookie):
+	r=requests.Session()
+	r.proxies=proxies
+	r.headers=headers
+	r.cookies.update(json.loads(cookie))
+	return r
+
+log.py
+from lib.helper.helper import * 
+from datetime import datetime
+class Log:
+
+	@classmethod
+	def info(self,text):
+ 		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+G+"INFO"+N+"] "+text)
+ 
+	@classmethod
+	def warning(self,text):
+		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+Y+"WARNING"+N+"] "+text)
+
+	@classmethod
+	def high(self,text):
+ 		print("["+Y+datetime.now().strftime("%H:%M:%S")+N+"] ["+R+"CRITICAL"+N+"] "+text)
+
+
 core.py
 from lib.helper.helper import *
 from random import randint
@@ -6,18 +104,11 @@ from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 from lib.helper.Log import *
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import os
-import logging
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-# Konfigurasi logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 class core:
-
-    critical_results = []
-
+    
     @classmethod
     def load_payloads(cls, filename):
         filepath = os.path.join(os.path.dirname(__file__), filename)
@@ -71,11 +162,6 @@ class core:
                 req = cls.session.post(urljoin(cls.url, action), data=keys)
                 if cls.payload in req.text:
                     Log.high("Detected XSS (POST) at " + urljoin(cls.url, req.url))
-                    cls.critical_results.append({
-                        "ID": len(cls.critical_results) + 1,
-                        "URL": req.url,
-                        "POC": f"POST$$$$$$urljoin(cls.url, action)"
-                    })
                     with open("xss.txt", "a") as file:
                         file.write(str(req.url) + "\n\n")
                     Log.high("Post data: " + str(keys))
@@ -118,11 +204,6 @@ class core:
                 req = cls.session.get(urljoin(cls.url, action), params=keys)
                 if cls.payload in req.text:
                     Log.high("Detected XSS (GET) at " + urljoin(cls.url, req.url))
-                    cls.critical_results.append({
-                        "ID": len(cls.critical_results) + 1,
-                        "URL": req.url,
-                        "POC": f"GET$$$$$$urljoin(cls.url, action)"
-                    })
                     with open("xss.txt", "a") as file:
                         file.write(str(req.url) + "\n\n")
                     Log.high("GET data: " + str(keys))
@@ -153,28 +234,12 @@ class core:
                         _respon = cls.session.get(test, verify=False)
                         if cls.payload in _respon.text or cls.payload in cls.session.get(query_all).text:
                             Log.high("Detected XSS (GET) at " + _respon.url)
-                            cls.critical_results.append({
-                                "ID": len(cls.critical_results) + 1,
-                                "URL": _respon.url,
-                                "POC": f"GET$$$$$$test"
-                            })
                             with open("xss.txt", "a") as file:
                                 file.write(str(_respon.url) + "\n\n")
                         else:
                             Log.info("Parameter page using (GET) payloads but not 100% yet...")
                     else:
                         Log.info("URL is not an HTTP url, ignoring")
-    
-    @classmethod
-    def print_critical_results(cls):
-        logger.info("Result summary:")
-        logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
-        logger.info("| ID | URL             | POC                                                                                            |")
-        logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
-        for result in cls.critical_results:
-            row = f"| {result['ID']:<2} | {result['URL']:<15} | {result['POC']:<95} |"
-            logger.info(row)
-        logger.info("+----+-----------------+------------------------------------------------------------------------------------------------+")
     
     @classmethod
     def main(cls, url, proxy, headers, payload, cookie, method=2):
@@ -196,7 +261,7 @@ class core:
             Log.info("Connection failed " + G + str(ctr.status_code))
             return 
         else:
-            Log.info("Connection established " + G + str(ctr.status_code))
+            Log.info("Connection estabilished " + G + str(ctr.status_code))
         
         if method >= 2:
             cls.post_method()
@@ -209,8 +274,6 @@ class core:
         elif method == 0:
             cls.get_method()
             cls.get_method_form()
-        
-        cls.print_critical_results()
 
 pwnxss.py
 import argparse
@@ -260,10 +323,7 @@ def start():
         
     elif getopt.single:
         core.main(getopt.single, getopt.proxy, getopt.user_agent, check(getopt), getopt.cookie, getopt.method)
-    
-    core.print_critical_results()
         
 if __name__ == "__main__":
     start()
-
 
