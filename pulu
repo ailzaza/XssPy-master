@@ -1,49 +1,105 @@
+payload.txt
+<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>
+on[a-z]+\s*=\s*["\'][^"\']*["\']
+eval\s*\(\s*["\'][^"']*["']\s*\)
+setTimeout\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
+setInterval\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
+document\.cookie
+<svg\b[^>]*onload\s*=\s*["'][^"']*["'][^>]*>
+<a\b[^>]*href\s*=\s*["']javascript:[^"']*["'][^>]*>
+<input\b[^>]*value\s*=\s*["'][^"']*<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>[^"']*["'][^>]*>
+<img\b[^>]*src\s*=\s*["']data:image\/svg\+xml;base64,[^"']*["'][^>]*>
+
+
+log.py
+import logging
+
+# Setup logger
+logger = logging.getLogger('xss_detection')
+logger.setLevel(logging.DEBUG)
+
+# Console handler
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+# Formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+
+# Add handler to logger
+logger.addHandler(ch)
+
+def log_message(level, message):
+    if level == 'info':
+        logger.info(message)
+    elif level == 'low':
+        logger.debug("LOW: " + message)
+    elif level == 'medium':
+        logger.warning("MEDIUM: " + message)
+    elif level == 'high':
+        logger.error("HIGH: " + message)
+    elif level == 'warning':
+        logger.warning(message)
+    else:
+        logger.info("INFO: " + message)
+
+
+core.py
+import re
+
+def load_patterns(filename):
+    with open(filename, 'r') as file:
+        patterns = [line.strip() for line in file if line.strip()]
+    return [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+
+# Load regex patterns from payload.txt
+xss_patterns = load_patterns('payload.txt')
+
+def is_xss_attack(input_str):
+    for pattern in xss_patterns:
+        if pattern.search(input_str):
+            return True
+    return False
+
+
+crawler.py
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-import time
+from log import log_message
+from core import is_xss_attack
 
-# URL target dan payload XSS
-target_url = "http://example.com/search"
-xss_payloads = ['<script>alert(1)</script>', '" onmouseover="alert(1)', "' onerror='alert(1)"]
-
-# Fungsi untuk memeriksa reflected XSS
-def check_reflected_xss(url, payload):
-    params = {'q': payload}
-    response = requests.get(url, params=params)
-    
-    if payload in response.text:
-        print(f"Reflected XSS ditemukan dengan payload: {payload}")
-    else:
-        print(f"Reflected XSS tidak ditemukan dengan payload: {payload}")
-
-# Fungsi untuk memeriksa DOM-based XSS
-def check_dom_xss(url, payload):
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Jalankan browser dalam mode headless
-    driver = webdriver.Chrome(options=chrome_options)
-
+def crawl(url):
     try:
-        driver.get(url)
-        search_box = driver.find_element(By.NAME, 'q')
-        search_box.send_keys(payload)
-        search_box.send_keys(Keys.RETURN)
-        time.sleep(3)  # Tunggu beberapa detik untuk memastikan halaman telah dimuat sepenuhnya
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an HTTPError for bad responses
+        content = response.text
+        soup = BeautifulSoup(content, 'html.parser')
+        scripts = soup.find_all('script')
         
-        # Periksa apakah payload dieksekusi di DOM
-        if payload in driver.page_source:
-            print(f"DOM-based XSS ditemukan dengan payload: {payload}")
-        else:
-            print(f"DOM-based XSS tidak ditemukan dengan payload: {payload}")
-    finally:
-        driver.quit()
+        for script in scripts:
+            if script.string and is_xss_attack(script.string):
+                log_message('high', f'Potential XSS attack detected in script from {url}: {script.string}')
+            else:
+                log_message('info', f'Script from {url} seems clean.')
+        
+        # Check other potential XSS vectors
+        for tag in soup.find_all(True):
+            for attribute, value in tag.attrs.items():
+                if isinstance(value, str) and is_xss_attack(value):
+                    log_message('high', f'Potential XSS attack detected in attribute {attribute} from {url}: {value}')
+                else:
+                    log_message('info', f'Attribute {attribute} from {url} seems clean.')
+    
+    except requests.RequestException as e:
+        log_message('warning', f'Error fetching URL {url}: {e}')
 
-# Memindai XSS dengan payload yang diberikan
-for payload in xss_payloads:
-    print(f"Memindai dengan payload: {payload}")
-    check_reflected_xss(target_url, payload)
-    check_dom_xss(target_url, payload)
+
+main.py
+from crawler import crawl
+
+def main():
+    url = 'http://example.com'  # Replace with the URL to crawl
+    crawl(url)
+
+if __name__ == '__main__':
+    main()
