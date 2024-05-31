@@ -103,3 +103,16 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>
+on[a-z]+\s*=\s*["\'][^"\']*["\']
+eval\s*\(\s*["\'][^"']*["']\s*\)
+setTimeout\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
+setInterval\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
+document\.cookie
+<svg\b[^>]*onload\s*=\s*["'][^"']*["'][^>]*>
+<a\b[^>]*href\s*=\s*["']javascript:[^"']*["'][^>]*>
+<input\b[^>]*value\s*=\s*["'][^"']*<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>[^"']*["'][^>]*>
+<img\b[^>]*src\s*=\s*["']data:image\/svg\+xml;base64,[^"']*["'][^>]*>
+
