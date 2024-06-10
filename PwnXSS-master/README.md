@@ -1,8 +1,3 @@
-<p align="center">   
- <img src="images/logo.png" height="200"><br/>
-A powerful XSS scanner made in python 3.7<br/>
-
-
 ## Installing 
 
 Requirements: <br/>
