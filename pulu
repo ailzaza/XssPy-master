@@ -1,118 +1,66 @@
-payload.txt
-<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>
-on[a-z]+\s*=\s*["\'][^"\']*["\']
-eval\s*\(\s*["\'][^"']*["']\s*\)
-setTimeout\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
-setInterval\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
-document\.cookie
-<svg\b[^>]*onload\s*=\s*["'][^"']*["'][^>]*>
-<a\b[^>]*href\s*=\s*["']javascript:[^"']*["'][^>]*>
-<input\b[^>]*value\s*=\s*["'][^"']*<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>[^"']*["'][^>]*>
-<img\b[^>]*src\s*=\s*["']data:image\/svg\+xml;base64,[^"']*["'][^>]*>
-
-
-log.py
-import logging
-
-# Setup logger
-logger = logging.getLogger('xss_detection')
-logger.setLevel(logging.DEBUG)
-
-# Console handler
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-
-# Formatter
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-
-# Add handler to logger
-logger.addHandler(ch)
-
-def log_message(level, message):
-    if level == 'info':
-        logger.info(message)
-    elif level == 'low':
-        logger.debug("LOW: " + message)
-    elif level == 'medium':
-        logger.warning("MEDIUM: " + message)
-    elif level == 'high':
-        logger.error("HIGH: " + message)
-    elif level == 'warning':
-        logger.warning(message)
-    else:
-        logger.info("INFO: " + message)
-
-
-core.py
-import re
-
-def load_patterns(filename):
-    with open(filename, 'r') as file:
-        patterns = [line.strip() for line in file if line.strip()]
-    return [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
-
-# Load regex patterns from payload.txt
-xss_patterns = load_patterns('payload.txt')
-
-def is_xss_attack(input_str):
-    for pattern in xss_patterns:
-        if pattern.search(input_str):
-            return True
-    return False
-
-
-crawler.py
 import requests
 from bs4 import BeautifulSoup
-from log import log_message
-from core import is_xss_attack
+import logging
 
-def crawl(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an HTTPError for bad responses
-        content = response.text
-        soup = BeautifulSoup(content, 'html.parser')
+# Konfigurasi logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# Fungsi untuk memuat payload dari file
+def load_payloads(filename):
+    with open(filename, 'r') as file:
+        return [line.strip() for line in file]
+
+# Fungsi untuk melakukan pemindaian XSS
+def scan_xss(url, payloads):
+    results = []
+    for payload in payloads:
+        # Mencoba Reflected XSS
+        reflected_url = f"{url}{payload}"
+        response = requests.get(reflected_url)
+        if payload in response.text:
+            logging.warning(f"Reflected XSS ditemukan di URL: {reflected_url}")
+            results.append((url, 'Reflected XSS', payload))
+        
+        # Cek DOM XSS
+        soup = BeautifulSoup(response.text, 'html.parser')
         scripts = soup.find_all('script')
-        
         for script in scripts:
-            if script.string and is_xss_attack(script.string):
-                log_message('high', f'Potential XSS attack detected in script from {url}: {script.string}')
-            else:
-                log_message('info', f'Script from {url} seems clean.')
+            if payload in script.string:
+                logging.warning(f"DOM XSS ditemukan di URL: {url}")
+                results.append((url, 'DOM XSS', payload))
         
-        # Check other potential XSS vectors
-        for tag in soup.find_all(True):
-            for attribute, value in tag.attrs.items():
-                if isinstance(value, str) and is_xss_attack(value):
-                    log_message('high', f'Potential XSS attack detected in attribute {attribute} from {url}: {value}')
-                else:
-                    log_message('info', f'Attribute {attribute} from {url} seems clean.')
+        # Cek Stored XSS
+        # Catatan: Ini hanya simulasi sederhana. Pendeteksian Stored XSS umumnya memerlukan interaksi lebih kompleks.
+        data = {'input': payload}
+        post_response = requests.post(url, data=data)
+        if payload in post_response.text:
+            logging.warning(f"Stored XSS ditemukan di URL: {url}")
+            results.append((url, 'Stored XSS', payload))
     
-    except requests.RequestException as e:
-        log_message('warning', f'Error fetching URL {url}: {e}')
+    return results
 
-
-main.py
-from crawler import crawl
-
+# Fungsi utama
 def main():
-    url = 'http://example.com'  # Replace with the URL to crawl
-    crawl(url)
+    target_urls = [
+        "https://example.com/page1",
+        "https://example.com/page2",
+    ]
+    payloads = load_payloads('payloads.txt')
+
+    all_results = []
+    for url in target_urls:
+        logging.info(f"Memindai URL: {url}")
+        results = scan_xss(url, payloads)
+        all_results.extend(results)
+
+    # Menyimpan hasil pemindaian
+    with open('xss_scan_results.txt', 'w') as result_file:
+        for result in all_results:
+            result_file.write(f"{result[0]} - {result[1]} - Payload: {result[2]}\n")
+    
+    logging.info("Pemindaian selesai. Hasil disimpan di xss_scan_results.txt")
 
 if __name__ == '__main__':
     main()
 
-
-<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>
-on[a-z]+\s*=\s*["\'][^"\']*["\']
-eval\s*\(\s*["\'][^"']*["']\s*\)
-setTimeout\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
-setInterval\s*\(\s*["\'][^"']*["']\s*,\s*\d+\s*\)
-document\.cookie
-<svg\b[^>]*onload\s*=\s*["'][^"']*["'][^>]*>
-<a\b[^>]*href\s*=\s*["']javascript:[^"']*["'][^>]*>
-<input\b[^>]*value\s*=\s*["'][^"']*<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>[^"']*["'][^>]*>
-<img\b[^>]*src\s*=\s*["']data:image\/svg\+xml;base64,[^"']*["'][^>]*>
 
